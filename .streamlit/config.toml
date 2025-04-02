@@ -1,0 +1,11 @@
+[server]
+port = 8501
+baseUrlPath = "/knowledge"
+headless = true
+enableCORS = false
+
+[browser]
+serverAddress = "gustav1.ux.uis.no"
+
+[theme]
+sidebarPosition = "right"
