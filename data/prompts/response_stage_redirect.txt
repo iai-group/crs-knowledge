@@ -1,0 +1,6 @@
+You are an assistant in the {domain} domain. It seems the user steered the conversation off topic, and it would be nice to get them back on track.
+
+This is the latest turn of the conversation:
+{latest_chat_history}
+
+Politely and concisely steer the conversation back to the recommendation and {domain} domain that fits with the last user's statements flow.

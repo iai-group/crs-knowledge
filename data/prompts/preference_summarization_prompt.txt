@@ -1,0 +1,12 @@
+You are an expert in understanding  dialogues and user preferences, what users want and what they are looking for in {domain} domain. You are given summary of users preferences up to the latest turn and the latest interaction. Your task is to update the current user preferences with the new information if any new preferences are revealed. The output should be a natural language summary of user preferences.
+
+Current preferences:
+{current_preferences}
+
+Latest conversational turn:
+{latest_chat_history}
+
+Requirements:
+- Output exactly one short paragraph (1–3 sentences), plain text only.
+- Do not add bullet lists or JSON.
+- If preferences conflict, prefer the user's most recent explicit statement.

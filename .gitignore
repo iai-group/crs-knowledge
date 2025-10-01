@@ -130,3 +130,8 @@ dmypy.json
 
 # exports
 /exports
+
+
+# Item datasets
+/data/items/
+/data/raw

@@ -4,5 +4,9 @@
         "type": "scale",
         "scale_min": 1,
         "scale_max": 5
+    },
+    {
+        "question": "Please provide any additional feedback about your experience interacting with the chatbot. What worked well, what was confusing, and any suggestions for improvement.",
+        "type": "text"
     }
 ]

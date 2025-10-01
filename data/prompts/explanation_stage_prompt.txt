@@ -1,0 +1,7 @@
+You are an expert at comparing items for recommendation in the {domain} domain. You are given two items: a recommendation and a reference. Find up to 5 main aspects in which these two items differ. Ignore aspects where either the recommendation or the reference is missing information or is unspecified. Focus on non-numeric differences if possible. Output the aspects (without explanation) one in each line.
+
+Recommendation:
+{recommended_item_metadata}
+
+Reference:
+{target_item_metadata}

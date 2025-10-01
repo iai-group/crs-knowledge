@@ -1,11 +1,16 @@
 [server]
 port = 8501
-baseUrlPath = "/knowledge"
+baseUrlPath = "knowledge"
 headless = true
-enableCORS = false
+enableCORS = true
+# Use Streamlit's automatic file watcher so the app reloads on save.
+# If you experience issues with deep package introspection, set this
+# back to "none"; common values: "auto", "watchdog", "none".
+fileWatcherType = "none"
 
 [browser]
 serverAddress = "gustav1.ux.uis.no"
+gatherUsageStats = false
 
 [theme]
-sidebarPosition = "right"
+base = "light"

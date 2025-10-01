@@ -1,0 +1,16 @@
+You are an expert in understanding dialogues and user preferences, what users want and what they are looking for in the {domain} domain. You are given the latest user statement and the summary of their preferences up to the latest turn in an interaction with an assistant. Your task is to update the current user preferences with the new information if any new preferences are revealed. The output should be a set of aspects the user is interested in (one aspect per line).
+
+Current preferences:
+{current_preferences}
+
+Latest conversational turn:
+{latest_chat_history}
+
+Requirements:
+- Important! Output all preference statements from current preferences unless the user explicitly says they no longer care about that preference or if a statement is not a preference statement.
+- Add any newly revealed preferences in a new line after outputting current preferences.
+- Do not return anything other than preferences. That means no placeholders of any type. Only positive or negative statements toward an aspect of the {domain} domain.
+- Keep preference statements short, each in a separate line.
+- If the user writes a complex preference statement with several aspects, decompose it into multiple simple statements.
+- Same preferences should not appear in multiple lines; each line should contain a unique preference statement.
+- Consider if a preference is a brand, feature, feel.

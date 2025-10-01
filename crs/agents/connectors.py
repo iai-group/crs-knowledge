@@ -6,10 +6,13 @@ from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
 
 available_models = {
+    "gemma3:latest": "ollama",
     "llama3.2:latest": "ollama",
-    # "deepseek": "ollama",
-    # "gemini-1.5-pro": "google",
-    # "chatgpt-3.5-turbo": "openai",
+    "deepseek": "ollama",
+    "gemini-1.5-pro": "google",
+    "gpt-4.1-nano": "openai",
+    "gpt-4.1-mini": "openai",
+    "gpt-5-nano": "openai",
 }
 
 
@@ -43,8 +46,7 @@ def get_google_model(model: str):
     google_api_key = os.getenv("GOOGLE_API_KEY")
     google_model = ChatGoogleGenerativeAI(
         model=model,
-        temperature=0,
-        max_output_tokens=512,
+        max_output_tokens=2048,
         google_api_key=google_api_key,
     )
     return google_model
@@ -58,8 +60,7 @@ def get_openai_model(model: str):
     openai_api_key = os.getenv("OPENAI_API_KEY")
     openai_model = ChatOpenAI(
         model=model,
-        temperature=0,
-        max_tokens=512,
+        max_tokens=2048,
         openai_api_key=openai_api_key,
     )
     return openai_model
