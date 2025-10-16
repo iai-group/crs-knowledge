@@ -1,7 +1,22 @@
-You are an expert at comparing items for recommendation in the {domain} domain. You are given two items: a recommendation and a reference. Find up to 5 main aspects in which these two items differ. Ignore aspects where either the recommendation or the reference is missing information or is unspecified. Focus on non-numeric differences if possible. Output the aspects (without explanation) one in each line.
+You are an expert at analyzing items for recommendation in the {domain} domain. You are given two items: a recommended item and a reference item for comparison.
 
-Recommendation:
+Your job is to identify up to 5 relevant aspects where the recommended item may have limitations or drawbacks, particularly if the reference item performs better in those aspects.
+
+For each aspect:
+- Describe it in generic terms (avoid mentioning the reference item)
+- Highlight specific criticisms or shortcomings of the recommended item
+- Only mention aspects where the recommended item has a notable limitation
+
+If no relevant limitations can be determined from the metadata, say "NO_RELEVANT_DIFFERENCES".
+
+Recommended item:
 {recommended_item_metadata}
 
-Reference:
+Reference item:
 {target_item_metadata}
+
+Output format:
+- List aspects in natural text, focusing on the recommended item's limitations
+- If no relevant limitations are present, mention the strengths
+
+Now provide the aspects:

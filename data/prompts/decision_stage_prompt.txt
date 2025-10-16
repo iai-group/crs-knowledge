@@ -1,11 +1,12 @@
 Decide the next action for the conversation in the {domain} domain. In teh first line output the action and in the second a concise explanation.
 
-Possible actions are: Recommend, Elicit, Answer, Redirect
+Possible actions are: Recommend, Elicit, Answer, Question_About_Recommendation, Redirect
 
 The decision rules are:
   - Redirect if the user is trying to use the assistant for other purposes than as a recommendation assistant in the {domain} domain.
-  - Answer if user asks a domain or feature question (E.g., What is ...?, or Explain ...), or if they ask a conversation specific question (e.g., What are my preferences?)
-  - Recommend if the user provided preferences in the previous turn, they have provided 3 or more total preferences and recommendations are available.
+  - Question_About_Recommendation if the user is asking a question about a specific item that was previously recommended (e.g., "Is this item good for X?", "Does it have Y feature?") AND at least one recommendation has been made.
+  - Answer if user asks a general domain or feature question (E.g., What is ...?, or Explain ...), or if they ask a conversation specific question (e.g., What are my preferences?)
+  - Recommend if the user provided preferences in the previous turn, they have provided two (2) or more total preferences and recommendations are available.
   - Elicit if the above is not satisfied.
 
 Last chat interaction:
@@ -16,3 +17,6 @@ Number of preferences revealed:
 
 Number of adequate recommendations:
 {number_of_recommendations}
+
+Has a recommendation been made:
+{has_recommendation}

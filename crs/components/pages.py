@@ -9,7 +9,6 @@ pages need from the main module, e.g. `save_response`, `count_bicycle_category`,
 `crs/main.py` as the entry point.
 """
 
-import os
 import random
 
 import streamlit as st
@@ -19,7 +18,9 @@ from crs.components import (
     build_introduction,
     build_questionnaire,
     build_task,
+    build_timer,
 )
+from crs.components.task import build_recommended_items_tracker
 
 
 def render_current_page():
@@ -35,6 +36,7 @@ def render_current_page():
     col1, col2 = st.columns(2)
 
     current = st.session_state.get("current_page", "screen")
+    print(f"🎬 render_current_page called, current_page = '{current}'")
 
     if current == "screen":
         build_questionnaire("screen", next_page="pre")
@@ -53,78 +55,22 @@ def render_current_page():
         return
 
     if current == "chat":
-        if "current_domain" not in st.session_state:
-            if st.session_state.get("domains"):
-                st.session_state.current_domain = random.choice(
-                    st.session_state.domains
-                )
-                try:
-                    st.session_state.domains.remove(
-                        st.session_state.current_domain
-                    )
-                except ValueError:
-                    pass
-            else:
-                st.session_state.current_domain = "Bicycle"
-        with col2:
-            build_task()
+        # Initialize timer when first entering chat page
+        if "chat_start_time" not in st.session_state:
+            import time
 
-            # Determine whether the conversation already found the target.
-            conversation_state = getattr(
-                st.session_state, "conversation_state", None
-            )
-            target_found = (
-                conversation_state and conversation_state.is_target_found()
-                if conversation_state
-                else False
-            )
-
-            # Only render the Give up button when the target has NOT been found.
-            if not target_found:
-                # When clicked, open a confirmation modal instead of navigating immediately.
-                if st.button("Give up", type="secondary"):
-                    # Use a session state flag to show the confirmation modal.
-                    st.session_state.show_give_up_confirm = True
-
-            # Render confirmation modal if requested in session state.
-            if st.session_state.get("show_give_up_confirm"):
-                # Use an expander-style modal built from st.modal when available,
-                # fall back to an info box with buttons if not. Streamlit >=1.18
-                # provides st.modal; to keep compatibility we try to use it if present.
-                try:
-                    with st.modal("Confirm Give up"):
-                        st.warning(
-                            "You have not completed the task yet. Are you sure you want to give up?"
-                        )
-                        cola, colb = st.columns(2)
-                        with cola:
-                            if st.button("Yes, give up"):
-                                st.session_state.current_page = "post"
-                                # clear the modal flag so it doesn't re-open
-                                st.session_state.show_give_up_confirm = False
-                                st.rerun()
-                        with colb:
-                            if st.button("Cancel"):
-                                st.session_state.show_give_up_confirm = False
-                                st.rerun()
-                except Exception:
-                    # Fallback UI if st.modal is not available in this Streamlit version.
-                    st.warning(
-                        "You have not completed the task yet. Are you sure you want to give up?"
-                    )
-                    cola, colb = st.columns(2)
-                    with cola:
-                        if st.button("Yes, give up"):
-                            st.session_state.current_page = "post"
-                            st.session_state.show_give_up_confirm = False
-                            st.rerun()
-                    with colb:
-                        if st.button("Cancel"):
-                            st.session_state.show_give_up_confirm = False
-                            st.rerun()
+            st.session_state.chat_start_time = time.time()
+            st.session_state.chat_timer_expired = False
 
         with col1:
+            st.header("Assistant")
+            build_timer()
             build_chatbot()
+
+        with col2:
+            build_task()
+            build_recommended_items_tracker()
+
         return
 
     if current == "post":

@@ -9,8 +9,7 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 QUESTIONNAIRE_DIR = "data/questionnaires/"
-TEST = True
-MAX_GROUP_PARTICIPANTS = 5
+MAX_GROUP_PARTICIPANTS = 50
 
 
 def _ensure_output_dir(path: str) -> None:
@@ -21,12 +20,16 @@ def _ensure_output_dir(path: str) -> None:
 
 def save_screen_response(
     answers: dict,
+    assigned_domain: str = None,
+    assigned_expertise: str = None,
     out_path: str = "exports/screen_results.jsonl",
 ) -> None:
     _ensure_output_dir(out_path)
     record = {
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "answers": answers,
+        "assigned_domain": assigned_domain,
+        "assigned_expertise": assigned_expertise,
         "prolific": st.session_state.get("prolific", {}),
     }
     try:
@@ -36,12 +39,57 @@ def save_screen_response(
         st.warning(f"Failed to save response to {out_path}: {e}")
 
 
-def count_bicycle_category(
-    category: str, out_path: str = "exports/screen_results.jsonl"
-) -> int:
+# def count_bicycle_category(
+#     category: str, out_path: str = "exports/screen_results.jsonl"
+# ) -> int:
+#     """Count participants in a specific bicycle knowledge category.
+
+#     Args:
+#         category: Knowledge level (e.g., "Novice", "Intermediate", "Expert")
+#         out_path: Path to screen_results.jsonl file
+
+#     Returns:
+#         Count of participants with the given knowledge level for bicycle domain
+#     """
+#     if not os.path.exists(out_path):
+#         return 0
+#     count = 0
+#     try:
+#         with open(out_path, "r", encoding="utf-8") as f:
+#             for line in f:
+#                 line = line.strip()
+#                 if not line:
+#                     continue
+#                 try:
+#                     rec = json.loads(line)
+#                 except Exception:
+#                     continue
+#                 answers = (
+#                     rec.get("answers", {}) if isinstance(rec, dict) else {}
+#                 )
+#                 # Use internal domain name "bicycle" (not "bicycles")
+#                 val = answers.get("bicycle", "")
+#                 if isinstance(val, str) and val.lower() == category.lower():
+#                     count += 1
+#     except Exception:
+#         return 0
+#     return count
+
+
+def count_participants_by_domain_expertise(
+    out_path: str = "exports/screen_results.jsonl",
+) -> dict:
+    """
+    Count participants by their assigned domain-expertise combination.
+
+    Returns:
+        A dictionary with keys like "bicycle-novice", "digital_camera-expert", etc.
+        mapping to their participant counts.
+    """
+    counts = {}
     if not os.path.exists(out_path):
-        return 0
-    count = 0
+        return counts
+
     try:
         with open(out_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -52,15 +100,99 @@ def count_bicycle_category(
                     rec = json.loads(line)
                 except Exception:
                     continue
-                answers = (
-                    rec.get("answers", {}) if isinstance(rec, dict) else {}
-                )
-                val = answers.get("bicycles") or answers.get("bicycles", "")
-                if isinstance(val, str) and val.lower() == category.lower():
-                    count += 1
-    except Exception:
-        return 0
-    return count
+
+                # Get the assigned domain and expertise from the record
+                assigned_domain = rec.get("assigned_domain", None)
+                assigned_expertise = rec.get("assigned_expertise", None)
+
+                if assigned_domain and assigned_expertise:
+                    # Create key like "bicycle-expert"
+                    count_key = (
+                        f"{assigned_domain}-{assigned_expertise.lower()}"
+                    )
+                    counts[count_key] = counts.get(count_key, 0) + 1
+    except Exception as e:
+        logger.error(f"Error counting participants: {e}")
+        return counts
+
+    return counts
+
+
+def assign_domain_to_participant(
+    participant_answers: dict,
+    out_path: str = "exports/screen_results.jsonl",
+) -> tuple[str, str]:
+    """
+    Assign a domain to a participant based on balancing participants across domain-expertise combinations.
+
+    Strategy:
+    1. Find the domain-expertise combination with the fewest assigned participants
+    2. On ties, prioritize higher expertise levels (Expert > Intermediate > Novice)
+
+    Args:
+        participant_answers: Dictionary with internal domain names as keys and knowledge levels as values
+                           e.g., {"movie": "Expert", "bicycle": "Novice", "digital_camera": "Intermediate", ...}
+        out_path: Path to screen_results.jsonl file
+
+    Returns:
+        A tuple of (domain_name, expertise_level) in internal format
+        e.g., ("bicycle", "Novice") or ("digital_camera", "Expert")
+    """
+    # Get current counts of assigned domain-expertise combinations
+    counts = count_participants_by_domain_expertise(out_path)
+
+    # Get available domains from session state (those with data files)
+    available_domains = st.session_state.get("domains", [])
+
+    # Define expertise ranking (lower number = higher priority)
+    expertise_rank = {
+        "expert": 0,
+        "intermediate": 1,
+        "novice": 2,
+    }
+
+    # Build list of candidates: (count, expertise_rank, domain_name, expertise_level)
+    candidates = []
+
+    for domain_key, knowledge_level in participant_answers.items():
+        if not knowledge_level or knowledge_level == "":
+            continue
+
+        # domain_key is already in internal format (e.g., "bicycle", "digital_camera")
+        # Only consider domains that are actually available (have data files)
+        if domain_key not in available_domains:
+            continue
+
+        # Get the count for this domain-expertise combination
+        count_key = f"{domain_key}-{knowledge_level.lower()}"
+        count = counts.get(count_key, 0)
+
+        # Get the expertise rank (lower is better)
+        expertise_priority = expertise_rank.get(knowledge_level.lower(), 999)
+
+        # Add to candidates: (count, expertise_rank, domain_name, expertise_level)
+        # Sort will prioritize lowest count, then lowest rank (highest expertise)
+        candidates.append(
+            (count, expertise_priority, domain_key, knowledge_level)
+        )
+
+    if not candidates:
+        # Fallback to bicycle-novice if no valid answers for available domains
+        logger.warning(
+            "No valid domain answers found for available domains, defaulting to bicycle-Novice"
+        )
+        return ("bicycle", "Novice")
+
+    # Sort by count (ascending), then by expertise rank (ascending = Expert first)
+    candidates.sort()
+
+    assigned_domain = candidates[0][2]
+    assigned_expertise = candidates[0][3]
+    logger.info(
+        f"Assigned domain-expertise: {assigned_domain}-{assigned_expertise} (count: {candidates[0][0]}, expertise_rank: {candidates[0][1]})"
+    )
+
+    return (assigned_domain, assigned_expertise)
 
 
 def load_questionnaire(directory: str, name: str) -> list:
@@ -168,7 +300,12 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
 
     # ----------- Front Questionnaire (Grid-style self-assessment) -----------
     if page_norm == "screen":
-        domains = ["Bicycles", "Movies", "Laptops"]
+        # Get domains from session state and transform for display
+        # Add "Movies" as it's used for screening but not in the study
+        internal_domains = ["movie"] + st.session_state.get("domains", [])
+        # Transform to display format: remove underscores and capitalize each word
+        domains = [d.replace("_", " ").title() for d in internal_domains]
+
         options = ["Novice", "Intermediate", "Expert"]
 
         # Center the questionnaire by creating a three-column layout and
@@ -284,57 +421,91 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
 
                 if submitted:
                     # Read current values from session_state and validate
+                    # Store answers using internal domain names (not display names)
                     answers = {}
                     missing = []
-                    for d in domains:
+                    for i, display_domain in enumerate(domains):
                         val = st.session_state.get(
-                            f"screen_{d.lower()}", placeholder
+                            f"screen_{display_domain.lower()}", placeholder
                         )
                         if val == placeholder:
-                            missing.append(d)
-                        answers[d.lower()] = "" if val == placeholder else val
+                            missing.append(display_domain)
+                        # Use internal domain name as key (from internal_domains list)
+                        internal_domain = internal_domains[i]
+                        answers[internal_domain] = (
+                            "" if val == placeholder else val
+                        )
 
-                    if missing and not TEST:
+                    if missing and not st.session_state.get("debug", False):
                         st.error(
                             "Please answer all questions before continuing."
                         )
                     else:
                         st.session_state["screen_answers"] = answers
+
+                        # Assign domain to participant based on balancing
+                        assigned_domain, assigned_expertise = (
+                            assign_domain_to_participant(answers)
+                        )
+                        st.session_state.current_domain = assigned_domain
+                        logger.info(
+                            f"Assigned participant to domain: {assigned_domain} with expertise: {assigned_expertise}"
+                        )
+
                         save_screen_response(
                             answers,
+                            assigned_domain=assigned_domain,
+                            assigned_expertise=assigned_expertise,
                         )
                         # Auto-save if available
                         if "auto_save_conversation" in st.session_state:
                             st.session_state.auto_save_conversation()
                         # Move to the next page if provided
 
-                        count = count_bicycle_category(
-                            answers.get("bicycles", "")
-                        )
-                        if count > MAX_GROUP_PARTICIPANTS and not TEST:
-                            st.session_state.current_page = "prolific_redirect"
-                        else:
-                            count_all_categories = sum(
-                                count_bicycle_category(opt)
-                                for opt in ["Novice", "Intermediate", "Expert"]
-                            )
-                            if (
-                                count_all_categories
-                                >= MAX_GROUP_PARTICIPANTS * 3
-                                and not TEST
-                            ):
-                                stop_study()
-                            st.session_state.current_page = "pre"
+                        # count = count_bicycle_category(
+                        #     answers.get("bicycle", "")
+                        # )
+                        # if (
+                        #     count > MAX_GROUP_PARTICIPANTS
+                        #     and not st.session_state.get("debug", False)
+                        # ):
+                        #     st.session_state.current_page = "prolific_redirect"
+                        # else:
+                        #     count_all_categories = sum(
+                        #         count_bicycle_category(opt)
+                        #         for opt in ["Novice", "Intermediate", "Expert"]
+                        #     )
+                        #     if (
+                        #         count_all_categories
+                        #         > MAX_GROUP_PARTICIPANTS * 3
+                        #         and not st.session_state.get("debug", False)
+                        #     ):
+                        #         stop_study()
+                        st.session_state.current_page = "pre"
                         st.rerun()
 
         return
 
     if page_norm == "pre":
-        st.session_state.current_domain = "Bicycle"
+        # Use the domain assigned during screen questionnaire
+        # If not set (e.g., debug mode), default to "bicycle"
+        if "current_domain" not in st.session_state:
+            st.session_state.current_domain = "bicycle"
+            logger.warning("current_domain not set, defaulting to bicycle")
+
+        # Format domain name for display (e.g., "digital_camera" → "Digital Camera")
+        domain_display = st.session_state.current_domain.replace(
+            "_", " "
+        ).title()
+
         # Reuse the original knowledge questionnaire rendering logic from main
-        st.header("Knowledge questionnaire")
+        st.header(f"Knowledge questionnaire -- {domain_display}")
+        st.info(
+            f"**Domain:** You will be working in the **{domain_display}** domain for this study."
+        )
+        # current_domain is already lowercase, so use it directly
         questions_path = os.path.join(
-            f"data/questionnaires/{st.session_state.current_domain.lower()}_questions.txt"
+            f"data/questionnaires/{st.session_state.current_domain}_questions.txt"
         )
         with open(questions_path, "r", encoding="utf-8") as f:
             raw = f.read()
@@ -476,7 +647,7 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                         if st.session_state.get(key) == placeholder:
                             missing.append(stmt)
 
-                if missing and not TEST:
+                if missing and not st.session_state.get("debug", False):
                     st.error("Please answer all statements before submitting.")
                 else:
                     normalized = {}

@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import random
 import uuid
 from datetime import datetime
 
@@ -28,7 +29,7 @@ def get_new_save_filename() -> str:
     return f"{date_part}_{unique_id}.json"
 
 
-def init(model_name: str = None):
+def init(args, model_name: str = None):
     """Initialize the Streamlit application with configuration.
 
     Args:
@@ -64,9 +65,10 @@ def init(model_name: str = None):
         st.session_state.auto_save_filename = get_new_save_filename()
 
     if "current_page" not in st.session_state:
-        # Start with a dedicated front questionnaire page
-        # Options: front, knowledge, start, chat, post, end, prolific_redirect
-        st.session_state.current_page = "screen"
+        if args.page:
+            st.session_state.current_page = args.page
+        else:
+            st.session_state.current_page = "screen"
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -78,31 +80,28 @@ def init(model_name: str = None):
         st.session_state.model_name = model_name
 
     if "domains" not in st.session_state:
-        st.session_state.domains = ["Bicycle"]
+        # Store domains in lowercase internally with underscores for file paths
+        st.session_state.domains = [
+            "bicycle",
+            "digital_camera",
+            "smartwatch",
+            "running_shoes",
+            "laptop",
+        ]
 
-    # if "domain_pair" not in st.session_state:
-    #     if len(st.session_state.domains) >= 2:
-    #         st.session_state.domain_pair = random.sample(
-    #             st.session_state.domains, 2
-    #         )
-    #     else:
-    #         st.session_state.domain_pair = st.session_state.domains
+    if args.domain:
+        # Convert argument to lowercase for consistency
+        domain_lower = args.domain.lower()
+        if domain_lower in st.session_state.domains:
+            st.session_state.current_domain = domain_lower
+        else:
+            raise ValueError(
+                f"Invalid domain '{args.domain}'. Must be one of {st.session_state.domains}"
+            )
 
-
-def reset():
-    st.session_state.auto_save_filename = get_new_save_filename()
-    # Safely clear domain-related session keys
-    if "domain_pair" in st.session_state:
-        del st.session_state.domain_pair
-    if "current_domain" in st.session_state:
-        del st.session_state.current_domain
-    st.session_state.chat_history = []
-    st.session_state.post_answers = {}
-
-    # Always go straight to chat (skip pre-questionnaire)
-    st.session_state.current_page = "chat"
-    st.session_state.pre_answers = {}
-    st.rerun()
+    if "task_version" not in st.session_state:
+        # Randomly select short or long version for tasks
+        st.session_state.task_version = random.choice(["short", "long"])
 
 
 def auto_save_conversation() -> None:
@@ -118,6 +117,7 @@ def auto_save_conversation() -> None:
         "pre_task_answers": st.session_state.get("pre_answers", {}),
         "post_task_answers": st.session_state.get("post_answers", {}),
         "current_domain": st.session_state.get("current_domain", ""),
+        "task_version": st.session_state.get("task_version", ""),
         "messages": [],
     }
     # Extract messages from chat_history.
@@ -149,10 +149,8 @@ def main(args: argparse.Namespace) -> None:
     # small helpers namespace. Pages expect `helpers` to have the same helpers
     # that were present in this module previously.
     st.session_state.auto_save_conversation = auto_save_conversation
+    st.session_state.debug = args.debug
 
-    # Delegate page rendering to the pages module; pass this module as the
-    # helpers namespace so pages can call `save_response`,
-    # `count_bicycle_category`, `reset`, and `auto_save_conversation`.
     render_current_page()
 
 
@@ -171,6 +169,35 @@ def parse_args() -> argparse.Namespace:
         help="Debugging mode",
         default=False,
     )
+    parser.add_argument(
+        "-p",
+        "--page",
+        type=str,
+        choices=[
+            "front",
+            "knowledge",
+            "start",
+            "chat",
+            "post",
+            "end",
+            "prolific_redirect",
+            "screen",
+        ],
+        help="Page to start on",
+    )
+    parser.add_argument(
+        "--domain",
+        type=str,
+        choices=[
+            "bicycle",
+            "digital_camera",
+            "smartwatch",
+            "running_shoes",
+            "laptop",
+        ],
+        help="Domain to use (lowercase with underscores)",
+        default=None,
+    )
     return parser.parse_args()
 
 
@@ -178,5 +205,5 @@ if __name__ == "__main__":
     args = parse_args()
     if args.debug:
         logger.setLevel(logging.DEBUG)
-    init()
+    init(args)
     main(args)

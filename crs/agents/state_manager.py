@@ -4,47 +4,91 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+)
 
 
 @dataclass
 class ConversationState:
     """Manages the state of a conversation."""
 
-    preferences: str = field(
-        default_factory=lambda: "No preferences specified."
-    )
+    preferences: str = field(default_factory=lambda: "")
+    num_preferences: int = field(default=0)
     retrieved_items: List[Dict[str, Any]] = field(default_factory=list)
     chat_log: List[BaseMessage] = field(default_factory=list)
     turn_count: int = 0
-    success_detection: Optional[Dict[str, Any]] = field(default=None)
-    recommended_items: List[str] = field(
-        default_factory=list
-    )  # Track recommended item IDs
+    recommended_items: List[Dict[str, Any]] = field(default_factory=list)
+    recommended_items_changed: bool = False
+    filtered_out_items: List[Dict[str, Any]] = field(default_factory=list)
+    last_recommended_item: Optional[Dict[str, Any]] = None
 
-    def update_preferences(self, new_preferences: str):
+    def update_preferences(
+        self, new_preferences: str, num_preferences: int = None
+    ):
         """Update the user preferences."""
         self.preferences = new_preferences.strip()
-        self.add_system_message(f"Updated preferences: {new_preferences}")
+        if num_preferences is not None:
+            self.num_preferences = num_preferences
+        else:
+            self.num_preferences = len(
+                [
+                    line
+                    for line in self.preferences.split("\n")
+                    if line.strip() != ""
+                ]
+            )
+
+    def get_preferences(self) -> str:
+        """Get the current user preferences."""
+        return self.preferences or "No preferences specified."
+
+    def get_len_preferences(self) -> int:
+        """Get the length of current user preferences."""
+        return self.num_preferences
 
     def update_retrieved_items(self, items: List[Dict[str, Any]]):
         """Update the retrieved items list."""
         self.retrieved_items = items
         item_titles = [item.get("title", "Unknown") for item in items]
-        self.add_system_message(f"Retrieved items: {', '.join(item_titles)}")
+        self.add_system_message(f"Retrieved items:\n{'\n'.join(item_titles)}")
 
-    def add_recommended_item(self, item_id: str, item_title: str = None):
+    def add_recommended_item(self, item: Dict[str, Any]):
         """Track an item that has been recommended to avoid repeating."""
-        if item_id not in self.recommended_items:
-            self.recommended_items.append(item_id)
-            title_info = f" ({item_title})" if item_title else ""
-            self.add_system_message(
-                f"Added to recommended: {item_id}{title_info}"
+        item_id = (
+            item.get("id")
+            or item.get("parent_asin")
+            or item.get("metadata", {}).get("parent_asin")
+        )
+        if item_id and not self.is_item_already_recommended(item_id):
+            self.recommended_items.append(item)
+            self.last_recommended_item = (
+                item  # Track the most recent recommendation
             )
+            item_title = (
+                item.get("title") or item.get("content", {}).get("title")
+                if isinstance(item.get("content"), dict)
+                else f"Item {item_id}"
+            )
+            self.add_system_message(
+                f"Added to recommended: {item_id} ({item_title})"
+            )
+            self.recommended_items_changed = True
 
     def is_item_already_recommended(self, item_id: str) -> bool:
         """Check if an item has already been recommended."""
-        return item_id in self.recommended_items
+        for recommended_item in self.recommended_items:
+            rec_id = (
+                recommended_item.get("id")
+                or recommended_item.get("parent_asin")
+                or recommended_item.get("metadata", {}).get("parent_asin")
+            )
+            if rec_id == item_id:
+                return True
+        return False
 
     def get_unrecommended_items(
         self, items: List[Dict[str, Any]]
@@ -59,22 +103,48 @@ class ConversationState:
                 unrecommended.append(item)
         return unrecommended
 
-    def update_success_detection(self, detection_result: Dict[str, Any]):
-        """Update the success detection result."""
-        self.success_detection = detection_result
-
-    def is_target_found(self) -> bool:
-        """Check if the target has been found."""
-        return self.success_detection and self.success_detection.get(
-            "target_found", False
+    def add_filtered_out_item(self, item: Dict[str, Any]):
+        """Add an item to the filtered out list to exclude from future retrievals."""
+        item_id = (
+            item.get("id")
+            or item.get("parent_asin")
+            or item.get("metadata", {}).get("parent_asin")
         )
+        if item_id and not self.is_item_filtered_out(item_id):
+            self.filtered_out_items.append(item)
+            item_title = (
+                item.get("title") or item.get("content", {}).get("title")
+                if isinstance(item.get("content"), dict)
+                else f"Item {item_id}"
+            )
+            self.add_system_message(
+                f"Added to filter out: {item_id} ({item_title})"
+            )
 
-    def get_success_info(self) -> Dict[str, Any]:
-        """Get current success detection information."""
-        return self.success_detection or {
-            "success": False,
-            "target_found": False,
-        }
+    def is_item_filtered_out(self, item_id: str) -> bool:
+        """Check if an item has been filtered out."""
+        for filtered_item in self.filtered_out_items:
+            filt_id = (
+                filtered_item.get("id")
+                or filtered_item.get("parent_asin")
+                or filtered_item.get("metadata", {}).get("parent_asin")
+            )
+            if filt_id == item_id:
+                return True
+        return False
+
+    def get_unfiltered_items(
+        self, items: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Filter out items that have been marked as filtered out."""
+        unfiltered = []
+        for item in items:
+            item_id = item.get("id") or item.get("metadata", {}).get(
+                "parent_asin"
+            )
+            if item_id and not self.is_item_filtered_out(item_id):
+                unfiltered.append(item)
+        return unfiltered
 
     def add_system_message(self, content: str):
         """Add a system message to the chat log."""
@@ -88,11 +158,25 @@ class ConversationState:
         self, chat_history: List[BaseMessage], count: int = 2
     ) -> List[BaseMessage]:
         """Get the latest messages from chat history."""
-        return (
-            chat_history[-count:]
-            if len(chat_history) >= count
-            else chat_history
-        )
+        messages = []
+        for msg in chat_history[-count:]:
+            if isinstance(msg, HumanMessage):
+                messages.append("User: " + msg.content)
+            elif isinstance(msg, AIMessage):
+                messages.append("Assistant: " + msg.content)
+        return "\n".join(messages)
+
+    def get_last_user_message(self, chat_history: List[BaseMessage]) -> str:
+        """Return the most recent human message content or empty string.
+
+        This helper centralizes extraction of the raw user text for stages
+        that need the unformatted user question (rather than the
+        formatted `get_latest_chat_history` output which includes prefixes).
+        """
+        for msg in reversed(chat_history):
+            if isinstance(msg, HumanMessage):
+                return msg.content.strip()
+        return ""
 
 
 class StateManager:

@@ -1,4 +1,7 @@
-You are an expert in understanding  dialogues and user preferences, what users want and what they are looking for in {domain} domain. You are given summary of users preferences up to the latest turn and the latest interaction. Your task is to update the current user preferences with the new information if any new preferences are revealed. The output should be a natural language summary of user preferences.
+You are analyzing a dialogue in the {domain} domain. Your task is to maintain and update a list of the user's preferences based only on what the user says. You will be given:
+ - A list of the current user preferences
+ - The latest conversational turn between the user and the assistant
+Update the list by carrying forward all existing preferences, removing only those the user explicitly rejects, and adding any new preferences revealed in the latest user statement.
 
 Current preferences:
 {current_preferences}
@@ -7,6 +10,11 @@ Latest conversational turn:
 {latest_chat_history}
 
 Requirements:
-- Output exactly one short paragraph (1–3 sentences), plain text only.
-- Do not add bullet lists or JSON.
-- If preferences conflict, prefer the user's most recent explicit statement.
+- Important! Output all preference statements from current preferences unless the user explicitly says they no longer care about that preference or if a statement is not a preference statement.
+- Add any newly revealed preferences in a new line after outputting current preferences.
+- Do not return anything other than preferences. That means no placeholders of any type. Only positive statements toward an aspect of the {domain} domain.
+- Keep preference statements short, each in a separate line.
+- If the user writes a complex preference statement with several aspects, decompose it into multiple simple statements.
+- Same preferences should not appear in multiple lines; each line should contain a unique preference statement.
+- Consider if a preference is a brand, feature, feel.
+- IMPORTANT: Only include POSITIVE preferences (what the user wants). Do NOT include negative preferences (what the user does NOT want, dislikes, or wants to avoid).

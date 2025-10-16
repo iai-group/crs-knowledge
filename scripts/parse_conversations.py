@@ -20,7 +20,6 @@ from typing import List
 
 
 def parse_dir(src: Path, out_dir: Path) -> int:
-    out_dir.mkdir(parents=True, exist_ok=True)
     files = sorted(src.glob("*.json"))
     written = 0
     for p in files:
@@ -35,7 +34,32 @@ def parse_dir(src: Path, out_dir: Path) -> int:
         non_system = [m for m in msgs if (m.get("role") or "") != "system"]
         if not non_system:
             continue
-        out_p = out_dir / (p.stem + ".md")
+
+        # Count human turns and skip if 2 or fewer
+        human_turns = sum(
+            1 for m in non_system if (m.get("role") or "").strip() == "human"
+        )
+        if human_turns <= 2:
+            continue
+
+        # Determine expertise level for this conversation
+        domain = data.get("current_domain")
+        screen = data.get("screen_answers") or {}
+        expertise = None
+        if domain and isinstance(screen, dict) and domain in screen:
+            expertise = screen.get(domain)
+
+        # Create output path with expertise subdirectory
+        if expertise and isinstance(expertise, str) and expertise.strip():
+            expertise_dir = out_dir / expertise.strip()
+            expertise_dir.mkdir(parents=True, exist_ok=True)
+            out_p = expertise_dir / (p.stem + ".md")
+        else:
+            # Fallback to unknown if no expertise found
+            unknown_dir = out_dir / "unknown"
+            unknown_dir.mkdir(parents=True, exist_ok=True)
+            out_p = unknown_dir / (p.stem + ".md")
+
         lines: List[str] = []
         # header: use prolific id if available, otherwise filename
         prof = data.get("prolific") or {}
@@ -44,8 +68,25 @@ def parse_dir(src: Path, out_dir: Path) -> int:
             lines.append(f"# Conversation — prolific_id: {pid}")
         else:
             lines.append(f"# Conversation — {p.stem}")
-        # include declared expertise from screen_answers if available
-        screen = data.get("screen_answers") or {}
+
+        # Add link to original JSON file
+        lines.append("")
+        # Get relative path from workspace root with leading slash
+        try:
+            relative_path = p.relative_to(Path.cwd())
+        except ValueError:
+            relative_path = p
+        lines.append(f"**Source:** [{p.name}](/{relative_path})")
+
+        # Add domain and expertise level for that domain
+        if domain:
+            lines.append("")
+            lines.append(f"**Domain:** {domain}")
+            # expertise was already extracted above
+            if expertise:
+                lines.append(f"**Expertise Level:** {expertise}")
+
+        # include declared expertise from screen_answers if available (all domains)
         if isinstance(screen, dict) and screen:
             bikes = screen.get("bicycles")
             movies = screen.get("movies")
@@ -59,20 +100,20 @@ def parse_dir(src: Path, out_dir: Path) -> int:
                 parts.append(f"Laptops: {laptops}")
             if parts:
                 lines.append("")
-                lines.append("**Expertise:** " + "; ".join(parts))
+                lines.append("**All Expertise Levels:** " + "; ".join(parts))
         lines.append("")
         for m in non_system:
             role = (m.get("role") or "").strip()
             content = m.get("content") or ""
             # normalize role names to uppercase labels
             r = role.lower()
-            if r in ("assistant", "ai"):
-                label = "AI"
-            else:
-                label = "HUMAN"
-            # format: bold the HUMAN utterance content, labels in bold uppercase
-            if label == "HUMAN":
-                content_str = f"**{content}**"
+            if r in ("assistant", "ai", "agent"):
+                label = "Agent"
+            elif r in ("human", "user", "participant"):
+                label = "User"
+            # format: bold the User utterance content, labels in bold uppercase
+            if label == "User":
+                content_str = f"**{content.strip()}**"
             else:
                 content_str = content
             lines.append(f"**{label}**: {content_str}")
@@ -84,11 +125,7 @@ def parse_dir(src: Path, out_dir: Path) -> int:
 
 def main(argv: List[str] | None = None) -> int:
     argv = list(sys.argv) if argv is None else argv
-    src = (
-        Path(argv[1])
-        if len(argv) > 1
-        else Path("exports/Prolific-0919/conversations")
-    )
+    src = Path(argv[1]) if len(argv) > 1 else Path("exports/conversations")
     if not src.exists() or not src.is_dir():
         alt = Path("exports/conversations")
         if alt.exists() and alt.is_dir():
@@ -97,7 +134,7 @@ def main(argv: List[str] | None = None) -> int:
             print(f"No conversations directory found at {src} or {alt}")
             return 2
     out = (
-        Path(argv[2]) if len(argv) > 2 else Path("exports/parsed_conversations")
+        Path(argv[2]) if len(argv) > 2 else src.parent / "parsed_conversations"
     )
     n = parse_dir(src, out)
     print(f"Parsed {n} conversation(s) to: {out}")

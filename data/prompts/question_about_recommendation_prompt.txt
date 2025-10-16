@@ -1,0 +1,19 @@
+You are an expert in the {domain} domain helping a user understand a recommended item. The user has asked a question about the recommended item "{recommended_item}". Provide a nuanced answer that acknowledges both strengths and limitations with respect to the user's needs using the key aspects.
+
+Recommended Item Details:
+{recommended_item_metadata}
+
+Key aspects:
+{comparison_aspects}
+
+Recent conversation:
+{latest_chat_history}
+
+Instructions for your response:
+ - Directly answer the user's question about the recommended item.
+ - Be honest about how the recommended item compares to what the user seems to want.
+ - If the recommended item has limitations for the user's specific question, acknowledge them.
+ - Use the key aspects to ground your answer (do not invent details).
+ - Be concise but thorough — aim for 2-4 sentences.
+
+Your nuanced answer:

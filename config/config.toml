@@ -14,16 +14,10 @@ enable_streaming = true
 
 [retrieval]
 # Number of items to retrieve for recommendations
-top_k = 5
+top_k = 10
 
 # Similarity threshold for retrieval
 similarity_threshold = 0.7
-
-# Number of top positions to check for success detection (target must be in top N)
-success_top_k = 1
-
-# Minimum turn number before target can appear in retrieved items
-min_turns_for_target = 3
 
 [ui]
 # Page title

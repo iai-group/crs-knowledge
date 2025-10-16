@@ -1,25 +1,107 @@
 import json
 import os
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
+import streamlit as st
+import torch
 from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
+
+# Hard-disable accelerators on CPU-only boxes
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 MODEL_NAME = "Qwen/Qwen3-Embedding-0.6B"
 
-INPUT_PATH = "data/items/bikes_meta.jsonl"
-OUTPUT_PATH = "data/items/bikes_embedded.jsonl"
+
+# Default paths - these will be overridden based on domain
+def get_domain_paths(domain: str = "bicycle") -> tuple[str, str]:
+    """Get the input and output paths for a given domain."""
+    domain_lower = domain.lower().replace(" ", "_")
+    # The domain name is used directly as the file prefix
+    # e.g., "bicycle" -> "bicycle_meta.jsonl", "digital_camera" -> "digital_camera_meta.jsonl"
+    input_path = f"data/items/{domain_lower}_meta_k50.jsonl"
+    output_path = f"data/items/{domain_lower}_embedded_k50.jsonl"
+    return input_path, output_path
+
+
+@st.cache_resource(show_spinner=False)
+def get_model(model_name: str) -> SentenceTransformer:
+    # Avoid HF lazy meta init that later fails on .to(...)
+    return SentenceTransformer(
+        model_name,
+        device="cpu",
+        model_kwargs={"low_cpu_mem_usage": False, "dtype": torch.float32},
+    )
+
+
+@st.cache_data(show_spinner=False)
+def load_embeddings_file(embeddings_path: str) -> Tuple[np.ndarray, List[str]]:
+    ids: List[str] = []
+    embs: List[np.ndarray] = []
+    with open(embeddings_path, "r") as infile:
+        for line in infile:
+            item = json.loads(line)
+            emb_id = item.get("id", f"item_{len(ids)}")
+            ids.append(emb_id)
+            emb = np.array(item.get("embedding", []), dtype=np.float32)
+            embs.append(emb)
+    if not embs:
+        return np.zeros((0, 0), dtype=np.float32), ids
+    embs_np = np.asarray(embs, dtype=np.float32)
+    return embs_np, ids
+
+
+@st.cache_data(show_spinner=False)
+def load_metadata_file(metadata_path: str) -> Dict[str, Dict[str, Any]]:
+    meta: Dict[str, Dict[str, Any]] = {}
+    with open(metadata_path, "r") as infile:
+        for i, line in enumerate(infile):
+            item = json.loads(line)
+            parent_asin = item.get("parent_asin")
+            explicit_id = item.get("id")
+            key = parent_asin or explicit_id or f"item_{i}"
+            meta[key] = item
+            if explicit_id and explicit_id != key:
+                meta[explicit_id] = item
+            if parent_asin and parent_asin != key:
+                meta[parent_asin] = item
+    return meta
+
+
+def _encode_query(model: SentenceTransformer, text: str) -> np.ndarray:
+    # ST 3.x path
+    if hasattr(model, "encode_query"):
+        return model.encode_query(text, convert_to_numpy=True, dtype=np.float32)
+    # ST 2.x fallback
+    return model.encode(text, convert_to_numpy=True).astype(np.float32)
+
+
+def _encode_texts(model: SentenceTransformer, texts: List[str]) -> np.ndarray:
+    if hasattr(model, "encode_corpus"):
+        return model.encode_corpus(
+            texts, convert_to_numpy=True, dtype=np.float32
+        )
+    return model.encode(texts, convert_to_numpy=True).astype(np.float32)
 
 
 class ItemRetriever:
     def __init__(
         self,
-        embeddings_path=OUTPUT_PATH,
-        metadata_path=INPUT_PATH,
-        model_name=MODEL_NAME,
-        document_embedding=False,
+        embeddings_path: str = None,
+        metadata_path: str = None,
+        model_name: str = MODEL_NAME,
+        document_embedding: bool = False,
+        domain: str = "bicycle",
     ):
-        # Validate paths depending on mode
+        # Use domain-based paths if not explicitly provided
+        if embeddings_path is None or metadata_path is None:
+            domain_input, domain_output = get_domain_paths(domain)
+            if embeddings_path is None:
+                embeddings_path = domain_output
+            if metadata_path is None:
+                metadata_path = domain_input
+
         if not document_embedding and not os.path.exists(embeddings_path):
             raise FileNotFoundError(
                 f"Embeddings file not found at {embeddings_path}"
@@ -29,116 +111,76 @@ class ItemRetriever:
                 f"Metadata file not found at {metadata_path}"
             )
 
-        # Model is created lazily to avoid unnecessary startup cost when only
-        # creating the object for embedding generation (document_embedding=True)
         self.model_name = model_name
-        self.model = None
+        self.model = None  # we will fetch from cache when needed
 
-        # Embeddings will be None if we're in document_embedding mode (we'll compute them)
         self.embeddings = None
-        self.ids = []
-        self.metadata = {}
+        self.ids: List[str] = []
+        self.metadata: Dict[str, Dict[str, Any]] = {}
 
-        # Load embeddings only when not in document_embedding mode
+        # Load embeddings only when not generating them
         if not document_embedding:
-            # Load embeddings with proper dtype handling
-            print("Loading embeddings from", embeddings_path)
-            embeddings_list = []
-            with open(embeddings_path, "r") as infile:
-                for line in infile:
-                    item = json.loads(line)
-                    # Use the id field from the embeddings file
-                    emb_id = item.get("id")
-                    if emb_id is None:
-                        # fallback to generated id
-                        emb_id = f"item_{len(self.ids)}"
-                    self.ids.append(emb_id)
-                    # Ensure consistent float32 dtype
-                    embedding = np.array(
-                        item.get("embedding", []), dtype=np.float32
-                    )
-                    embeddings_list.append(embedding)
-
-            # Convert to numpy array with consistent dtype
-            if embeddings_list:
-                self.embeddings = np.array(embeddings_list, dtype=np.float32)
-                print(
-                    f"Loaded {len(self.embeddings)} embeddings with shape {self.embeddings.shape}"
-                )
-            else:
-                self.embeddings = np.array([], dtype=np.float32)
-                print("No embeddings found in embeddings file.")
-
-        # Load metadata and index by plausible ids (parent_asin and any explicit id)
-        print("Loading metadata from", metadata_path)
-        with open(metadata_path, "r") as infile:
-            for i, line in enumerate(infile):
-                item = json.loads(line)
-                # Primary id candidates
-                parent_asin = item.get("parent_asin")
-                explicit_id = item.get("id")
-                key = parent_asin or explicit_id or f"item_{i}"
-
-                # Store metadata for both parent_asin and explicit id if available
-                self.metadata[key] = item
-                if explicit_id and explicit_id != key:
-                    self.metadata[explicit_id] = item
-                if parent_asin and parent_asin != key:
-                    self.metadata[parent_asin] = item
-
-    def embed_batch(self, texts):
-        # lazy-load model
-        if self.model is None:
-            self.model = SentenceTransformer(self.model_name)
-        return self.model.encode(texts, convert_to_numpy=True, dtype=np.float32)
-
-    def retrieve(self, query, top_k=5):
-        # Encode query with consistent dtype
-        if self.embeddings is None or len(self.embeddings) == 0:
-            raise ValueError(
-                "No embeddings loaded. Initialize ItemRetriever with precomputed embeddings or call embed_batch to generate embeddings first."
+            embs, ids = load_embeddings_file(embeddings_path)
+            self.embeddings = embs  # float32 [N, D]
+            self.ids = ids
+            print(
+                f"Loaded {len(self.ids)} embeddings with shape {self.embeddings.shape}"
             )
 
-        # lazy-load model if needed for query encoding
+        # Load metadata
+        self.metadata = load_metadata_file(metadata_path)
+        print(f"Loaded metadata entries: {len(self.metadata)}")
+
+    def _get_model(self) -> SentenceTransformer:
         if self.model is None:
-            self.model = SentenceTransformer(self.model_name)
+            self.model = get_model(self.model_name)
+        return self.model
 
-        query_embedding = self.model.encode_query(
-            query, convert_to_numpy=True, dtype=np.float32
+    def embed_batch(self, texts: List[str]) -> np.ndarray:
+        model = self._get_model()
+        return _encode_texts(model, texts)
+
+    def retrieve(self, query: str, top_k: int = 5):
+        if self.embeddings is None or self.embeddings.size == 0:
+            raise ValueError(
+                "No embeddings loaded. Initialize with precomputed embeddings or call embed_batch first."
+            )
+
+        model = self._get_model()
+        q = _encode_query(model, query)
+
+        # Cosine similarity
+        qn = q / (np.linalg.norm(q) + 1e-12)
+        dn = self.embeddings / (
+            np.linalg.norm(self.embeddings, axis=1, keepdims=True) + 1e-12
         )
+        sims = dn @ qn  # [N]
 
-        # Calculate similarities using numpy for better performance
-        # Normalize embeddings for cosine similarity
-        q_norm = np.linalg.norm(query_embedding)
-        if q_norm == 0:
-            raise ValueError("Query embedding has zero norm")
-        query_norm = query_embedding / q_norm
-
-        embeddings_norm = self.embeddings / np.linalg.norm(
-            self.embeddings, axis=1, keepdims=True
-        )
-
-        # Compute cosine similarities
-        similarities = np.dot(embeddings_norm, query_norm)
-
-        # Get top k indices
-        top_indices = np.argsort(similarities)[::-1][:top_k]
-
+        top_idx = np.argsort(-sims)[:top_k]
         results = []
-        for i in top_indices:
+        for i in top_idx:
             emb_id = self.ids[i]
-            metadata = self.metadata.get(emb_id)
-            # fallback to any mapping if direct id lookup fails
-            if metadata is None:
-                # try parent_asin mapping or use a basic placeholder
-                metadata = self.metadata.get(str(emb_id), {"id": emb_id})
-            results.append((metadata, float(similarities[i])))
-
+            meta = (
+                self.metadata.get(emb_id)
+                or self.metadata.get(str(emb_id))
+                or {"id": emb_id}
+            )
+            results.append((meta, float(sims[i])))
         return results
 
 
-def main(batch_size=8):
-    embedder = ItemRetriever(document_embedding=True)
+def main(batch_size=1):
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        # Fallback if tqdm is not available
+        tqdm = lambda x: x
+
+    domain = "running_shoes"
+
+    INPUT_PATH = f"data/items/{domain}_meta.jsonl"
+    OUTPUT_PATH = f"data/items/{domain}_embedded.jsonl"
+    embedder = ItemRetriever(domain=domain, document_embedding=True)
     docs = []
     ids = []
     with open(INPUT_PATH, "r") as infile, open(OUTPUT_PATH, "w") as outfile:
