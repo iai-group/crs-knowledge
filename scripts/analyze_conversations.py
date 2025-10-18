@@ -6,6 +6,8 @@ those that contain a top-level `messages` list, removes `system` messages,
 and computes statistics on message lengths (characters and words) and the
 average `q1` score from `post_task_answers` when available.
 
+Also extracts the number of preferences elicited from system messages.
+
 Usage: python scripts/analyze_conversations.py [path/to/conversations_dir]
 """
 from __future__ import annotations
@@ -61,20 +63,41 @@ def summarize_numbers(xs: Iterable[float]) -> Dict[str, float]:
     }
 
 
+def extract_preference_count(messages: List[dict]) -> Optional[int]:
+    """Extract the final preference count from system messages.
+
+    Iterates from the end of messages to find the last system message
+    with format "Updated to X preferences ..." and extracts X.
+
+    Returns:
+        The preference count as an integer, or None if not found.
+    """
+    for msg in reversed(messages):
+        if msg.get("role") == "system":
+            content = msg.get("content", "")
+            # Look for pattern "Updated to X preferences"
+            match = re.search(r"Updated to (\d+) preferences?", content)
+            if match:
+                return int(match.group(1))
+    return None
+
+
 def analyze_dir(dirpath: Path):
     files = sorted(dirpath.glob("*.json"))
     convo_files = 0
+    completed_convo_files = 0
     total_messages = 0
     total_non_system = 0
     messages_per_convo: List[int] = []
     non_system_per_convo: List[int] = []
+    human_messages_per_convo: List[int] = []
 
-    char_lengths: List[int] = []
+    # char_lengths: List[int] = []
     word_lengths: List[int] = []
     # per-role lengths
-    human_char_lengths: List[int] = []
+    # human_char_lengths: List[int] = []
     human_word_lengths: List[int] = []
-    ai_char_lengths: List[int] = []
+    # ai_char_lengths: List[int] = []aa
     ai_word_lengths: List[int] = []
 
     q1_scores: List[float] = []
@@ -83,6 +106,11 @@ def analyze_dir(dirpath: Path):
     # Track distributions per domain and expertise
     domain_counts: Counter[str] = Counter()
     expertise_by_domain: Dict[str, Counter[str]] = {}
+
+    # Track preference counts
+    preference_counts: List[int] = []
+    preference_counts_by_domain: Dict[str, List[int]] = {}
+    preference_counts_by_expertise: Dict[str, List[int]] = {}
 
     # Track feedback comments
     feedback_comments: List[Dict[str, str]] = []
@@ -110,11 +138,22 @@ def analyze_dir(dirpath: Path):
         if not isinstance(msgs, list) or not msgs:
             continue
         convo_files += 1
+
+        # Track completed conversations
+        if data.get("completed"):
+            completed_convo_files += 1
+
         total_messages += len(msgs)
         messages_per_convo.append(len(msgs))
 
+        # Extract preference count from system messages
+        pref_count = extract_preference_count(msgs)
+        if pref_count is not None:
+            preference_counts.append(pref_count)
+
         # filter out system messages
         non_system = [m for m in msgs if (m.get("role") or "") != "system"]
+
         total_non_system += len(non_system)
         non_system_per_convo.append(len(non_system))
 
@@ -123,13 +162,14 @@ def analyze_dir(dirpath: Path):
             1 for m in non_system if (m.get("role") or "").strip() == "human"
         )
         human_turns_per_convo.append(human_turns)
+        human_messages_per_convo.append(human_turns)
 
         for m in non_system:
             content = m.get("content")
             if content is None:
                 content = ""
             content = str(content)
-            char_lengths.append(len(content))
+            # char_lengths.append(len(content))
             # simple word split
             wcount = len(content.split())
             word_lengths.append(wcount)
@@ -137,10 +177,10 @@ def analyze_dir(dirpath: Path):
             # per-role splits (human / ai)
             role = (m.get("role") or "").strip()
             if role == "human":
-                human_char_lengths.append(len(content))
+                # human_char_lengths.append(len(content))
                 human_word_lengths.append(wcount)
             elif role in ("ai", "assistant"):
-                ai_char_lengths.append(len(content))
+                # ai_char_lengths.append(len(content))
                 ai_word_lengths.append(wcount)
 
         # post task answers: try to extract q1 numeric score and q2 feedback
@@ -173,7 +213,7 @@ def analyze_dir(dirpath: Path):
                                 q1_scores_by_expertise[expertise_str] = []
                             q1_scores_by_expertise[expertise_str].append(v)
 
-            # Collect feedback comments (q2)
+            # Collect feedback comments (q2) with associated q1 score
             q2_feedback = post.get("q2")
             if (
                 q2_feedback
@@ -188,7 +228,10 @@ def analyze_dir(dirpath: Path):
                     # If p is already relative or can't compute relative path
                     file_path = (
                         str(p)
-                        .replace("/conversations/", "/parsed_conversations/")
+                        .replace(
+                            "/conversations/",
+                            f"/parsed_conversations/{expertise}/",
+                        )
                         .replace(".json", ".md")
                     )
                 feedback_comments.append(
@@ -196,6 +239,7 @@ def analyze_dir(dirpath: Path):
                         "domain": domain,
                         "feedback": q2_feedback.strip(),
                         "file": file_path,
+                        "q1_score": v,  # Include q1 score with feedback
                     }
                 )
 
@@ -231,6 +275,18 @@ def analyze_dir(dirpath: Path):
                 if expertise not in human_turns_by_expertise:
                     human_turns_by_expertise[expertise] = []
                 human_turns_by_expertise[expertise].append(human_turns)
+
+            # Track preference counts by domain
+            if pref_count is not None:
+                if domain not in preference_counts_by_domain:
+                    preference_counts_by_domain[domain] = []
+                preference_counts_by_domain[domain].append(pref_count)
+
+                # Track preference counts by expertise
+                if expertise:
+                    if expertise not in preference_counts_by_expertise:
+                        preference_counts_by_expertise[expertise] = []
+                    preference_counts_by_expertise[expertise].append(pref_count)
 
         # Extract selected item from the end of the conversation
         # Look for pattern: AI asks "Are you sure you want to go with this recommendation?"
@@ -268,7 +324,8 @@ def analyze_dir(dirpath: Path):
     print(f"Conversations dir: {dirpath}")
     print(f"Files scanned: {len(files)}")
     print(f"Conversation files with messages: {convo_files}")
-    print(f"Total messages (including system): {total_messages}")
+    print(f"  Completed: {completed_convo_files}")
+    # print(f"Total messages (including system): {total_messages}")
     print(f"Total non-system messages: {total_non_system}")
 
     def fmt(s: Dict[str, float]) -> str:
@@ -278,8 +335,8 @@ def analyze_dir(dirpath: Path):
         )
 
     print()
-    print("Message length (characters):")
-    print("  ", fmt(summarize_numbers(char_lengths)))
+    # print("Message length (characters):")
+    # print("  ", fmt(summarize_numbers(char_lengths)))
     print("Message length (words):")
     print("  ", fmt(summarize_numbers(word_lengths)))
 
@@ -294,6 +351,8 @@ def analyze_dir(dirpath: Path):
     print("  ", fmt(summarize_numbers(messages_per_convo)))
     print("Non-system messages per conversation:")
     print("  ", fmt(summarize_numbers(non_system_per_convo)))
+    print("Human messages per conversation:")
+    print("  ", fmt(summarize_numbers(human_messages_per_convo)))
 
     print()
     if q1_scores:
@@ -361,7 +420,8 @@ def analyze_dir(dirpath: Path):
     if human_turns_by_domain:
         for domain in sorted(human_turns_by_domain.keys()):
             s = summarize_numbers(human_turns_by_domain[domain])
-            print(f"  {domain}:", fmt(s))
+            total_turns = sum(human_turns_by_domain[domain])
+            print(f"  {domain}:", fmt(s), f"(total: {total_turns})")
     else:
         print("  No domain data available.")
 
@@ -372,7 +432,39 @@ def analyze_dir(dirpath: Path):
         for level in ["Novice", "Intermediate", "Expert"]:
             if level in human_turns_by_expertise:
                 s = summarize_numbers(human_turns_by_expertise[level])
-                print(f"  {level}:", fmt(s))
+                total_turns = sum(human_turns_by_expertise[level])
+                print(f"  {level}:", fmt(s), f"(total: {total_turns})")
+    else:
+        print("  No expertise data available.")
+
+    # Print preference counts
+    print()
+    print("Preferences elicited per conversation:")
+    if preference_counts:
+        print("  ", fmt(summarize_numbers(preference_counts)))
+    else:
+        print("  No preference count data available.")
+
+    # Print preference counts by domain
+    print()
+    print("Preferences elicited per conversation by domain:")
+    if preference_counts_by_domain:
+        for domain in sorted(preference_counts_by_domain.keys()):
+            s = summarize_numbers(preference_counts_by_domain[domain])
+            total_prefs = sum(preference_counts_by_domain[domain])
+            print(f"  {domain}:", fmt(s), f"(total: {total_prefs})")
+    else:
+        print("  No domain data available.")
+
+    # Print preference counts by expertise
+    print()
+    print("Preferences elicited per conversation by expertise level:")
+    if preference_counts_by_expertise:
+        for level in ["Novice", "Intermediate", "Expert"]:
+            if level in preference_counts_by_expertise:
+                s = summarize_numbers(preference_counts_by_expertise[level])
+                total_prefs = sum(preference_counts_by_expertise[level])
+                print(f"  {level}:", fmt(s), f"(total: {total_prefs})")
     else:
         print("  No expertise data available.")
 
@@ -400,38 +492,52 @@ def analyze_dir(dirpath: Path):
     else:
         print("  No selected items found.")
 
-    # Print feedback comments summary
-    print()
-    print("=" * 80)
-    print(
-        f"Feedback comments from post-task questionnaire (q2): {len(feedback_comments)} total"
-    )
-    print("=" * 80)
-    if feedback_comments:
-        # Show a summary by domain
-        feedback_by_domain = Counter(
-            comment["domain"] for comment in feedback_comments
-        )
-        print("\nFeedback count by domain:")
-        for domain, count in sorted(
-            feedback_by_domain.items(), key=lambda x: x[1], reverse=True
-        ):
-            print(f"  {domain}: {count}")
+    # # Print feedback comments summary
+    # print()
+    # print("=" * 80)
+    # print(
+    #     f"Feedback comments from post-task questionnaire (q2): {len(feedback_comments)} total"
+    # )
+    # print("=" * 80)
+    # if feedback_comments:
+    #     # Show a summary by domain
+    #     feedback_by_domain = Counter(
+    #         comment["domain"] for comment in feedback_comments
+    #     )
+    #     print("\nFeedback count by domain:")
+    #     for domain, count in sorted(
+    #         feedback_by_domain.items(), key=lambda x: x[1], reverse=True
+    #     ):
+    #         print(f"  {domain}: {count}")
 
-        print("\n" + "=" * 80)
-        print("Individual feedback comments:")
-        print("=" * 80)
-        for i, comment in enumerate(feedback_comments, 1):
-            print(
-                f"\n[{i}] Domain: {comment['domain']} | File: {comment['file']}"
-            )
-            # Wrap long feedback text for better readability
-            feedback_text = comment["feedback"]
-            # Print with slight indentation
-            for line in feedback_text.split("\n"):
-                print(f"    {line}")
-    else:
-        print("  No feedback comments found.")
+    #     print("\n" + "=" * 80)
+    #     print(
+    #         "Individual feedback comments (sorted by q1 score, lowest first):"
+    #     )
+    #     print("=" * 80)
+
+    #     # Sort by q1 score (lowest first), with None values at the end
+    #     sorted_feedback = sorted(
+    #         feedback_comments,
+    #         key=lambda x: (
+    #             x.get("q1_score") is None,
+    #             x.get("q1_score") or float("inf"),
+    #         ),
+    #     )
+
+    #     for i, comment in enumerate(sorted_feedback, 1):
+    #         q1_score = comment.get("q1_score")
+    #         score_str = f"q1={q1_score}" if q1_score is not None else "q1=N/A"
+    #         print(
+    #             f"\n[{i}] {score_str} | Domain: {comment['domain']} | File: {comment['file']}"
+    #         )
+    #         # Wrap long feedback text for better readability
+    #         feedback_text = comment["feedback"]
+    #         # Print with slight indentation
+    #         for line in feedback_text.split("\n"):
+    #             print(f"    {line}")
+    # else:
+    #     print("  No feedback comments found.")
 
 
 def main(argv: list[str] | None = None) -> int:

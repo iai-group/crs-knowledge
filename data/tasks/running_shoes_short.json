@@ -17,5 +17,42 @@
             ]
         },
         "domain": "Running Shoes"
+    },
+    {
+        "story": "You’re a woman in your 30s looking for trail running shoes. Your routes are park singletrack, wooded paths, and hilly fire roads that turn slick after rain. You want grip that holds in mud and loose gravel and stays steady on wet roots and stone steps. You need some protection under the forefoot for sharp rocks, without a stiff, clunky feel. The fit should be stable and neutral, locking your heel and midfoot so you don’t slide on side slopes. The upper should breathe and keep grit out, with a reinforced front for scuffs. You want enough bounce uphill and control downhill for year-round runs.",
+        "img_path": "https://m.media-amazon.com/images/I/41eAvgMLZ-L._AC_.jpg",
+        "target": {
+            "asin": "B07T5CLPVW",
+            "content": "title: Saucony Women's Peregrine 10 Trail Running Shoe  features: Synthetic-and-mesh Imported Rubber sole Shaft measures approximately mid-top from arch Aggressive lugs made of PWRTRAC tacky rubber conform to dig in and confidently grip a wide variety of terrains New PWRRUN cushioning ensures a responsive yet protective feel to push uphill and bomb downhill with confidence Rock plate that provides additional protection Reinforced to protect feet from trail debris, the trail-specific FORMFIT design gives the perfect lock-down fit over uneven terrain Category: Neutral  description: Peregrine 10.  details: Item model number: Peregrine 10 Department: Womens Date First Available: June 18, 2019 Manufacturer: Saucony",
+            "average_rating": 4.4,
+            "categories": [
+                "Clothing, Shoes & Jewelry",
+                "Men",
+                "Shoes",
+                "Athletic",
+                "Running",
+                "Road Running"
+            ]
+        },
+        "domain": "Running Shoes"
+    },
+    {
+        "story": "You’re a man in your 40s looking for road shoes. Most runs are on pavement and bike paths, with some treadmill time when it’s raining. You tend to roll inward a bit and want a shoe that keeps you centered without feeling stiff. The heel should stay locked on downhills and when you pick up the pace late. Underfoot should feel smooth and steady, with enough cushion to blunt concrete but not so soft that corners feel wobbly. The upper needs to breathe and hold your midfoot. You want a durable, consistent ride from easy days to longer weekend runs.",
+        "img_path": "https://m.media-amazon.com/images/I/511s4wcQ8-L._AC_.jpg",
+        "target": {
+            "asin": "B00OU9OQM0",
+            "content": "title: ASICS Mens GT-2000 3  features: 100% Textile/Synthetic Imported Rubber sole Lightweight running shoe with breathable mesh upper featuring synthetic overlays Heel Clutching System ComforDry sockliner I.G.S (Impact Guidance System) FluidRide midsole Rearfoot and forefoot GEL cushioning system AHAR rubber outsole  description: In 1949, Mr. Kihachiro Onitsuka began his athletic footwear company (Onitsuka Co., Ltd.) by manufacturing basketball shoes out of his living room in Kobe, Japan. He chose the name ASICS for his company in 1977, based on a famous Latin phrase \"Anima Sana In Corpore Sano,\" which, when translated, expresses the ancient ideal of \"A Sound Mind in a Sound Body.\" Taking the acronym of this phrase, ASICS was founded on the belief that the best way to create a healthy and happy lifestyle is to promote total health and fitness. Today, ASICS offers a full line of performance-driven athletic shoes and technical active sports apparel and accessories dedicated to bringing harmony to the body and soul.  details: Package Dimensions: 12.4 x 7.5 x 4.8 inches; 9.6 Ounces Item model number: GT-2000 3-M Department: mens Date First Available: May 4, 2015 Manufacturer: ASICS America Corporation",
+            "title": "ASICS Mens GT-2000 3",
+            "average_rating": 4.6,
+            "categories": [
+                "Clothing, Shoes & Jewelry",
+                "Men",
+                "Shoes",
+                "Athletic",
+                "Running",
+                "Road Running"
+            ]
+        },
+        "domain": "Running Shoes"
     }
 ]

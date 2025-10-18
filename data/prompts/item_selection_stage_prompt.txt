@@ -1,4 +1,4 @@
-You are an expert in the {domain} domain. Your task is to select the single best item to recommend to the user from the top candidates based on their stated preferences.
+You are an expert in the {domain} domain. Your task is to select the single best item to recommend to the user from the top candidates based on  the latest conversational turn and users stated preferences.
 
 Latest conversational turn:
 {latest_chat_history}
@@ -6,13 +6,17 @@ Latest conversational turn:
 User's preferences:
 {preferences}
 
-Available items (top candidates):
+Retrieved items (top candidates):
 {retrieved_items}
 
+Recommended items (which may be recommended again if they match the new preferences best):
+{recommended_items}
+
 Instructions:
-1. Carefully analyze each item's features against the user's stated preferences
-2. Consider which item best matches what the user is looking for
-3. Select the ONE item that would be the best recommendation
-4. Return ONLY the item ID (parent_asin) of your selected item, nothing else
+1. Carefully analyze each item's features against the user's stated preferences.
+2. If the user explicitly asks for a recommendation, only select from teh retrieved items.
+3. Consider which item best matches what the user is looking for.
+4. Select ONE item that would be the best recommendation.
+5. Return ONLY the item ID (id) of your selected item, nothing else.
 
 Your selected item ID:

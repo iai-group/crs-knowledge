@@ -131,6 +131,7 @@ dmypy.json
 # exports
 /exports
 /exports*
+/post_process
 
 
 # Item datasets

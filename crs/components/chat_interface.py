@@ -1,7 +1,10 @@
 import time
 
 import streamlit as st
+import streamlit.components.v1 as components
 from langchain_core.messages import AIMessage, HumanMessage
+
+from crs.agents.chains import get_response_stream
 
 
 class ImageMessage(AIMessage):
@@ -12,62 +15,101 @@ class ImageMessage(AIMessage):
         self.image_url = image_url
 
 
-from crs.agents.chains import get_response_stream
+TIMER_DURATION = 900
 
 
-@st.fragment(run_every="1s")
+def ensure_timer():
+    # init once
+    if "chat_end_ts" not in st.session_state:
+        start = st.session_state.get("chat_start_time", time.time())
+        st.session_state.chat_start_time = start
+        st.session_state.chat_end_ts = start + TIMER_DURATION
+
+    # authoritative server check (no polling)
+    if not st.session_state.get("chat_timer_expired", False):
+        if time.time() >= st.session_state.chat_end_ts:
+            st.session_state.chat_timer_expired = True
+            # any server-side consequences go here (disable input, show info, etc.)
+    return st.session_state.get("chat_timer_expired", False)
+
+
 def build_timer() -> bool:
-    """
-    Builds a real-time countdown timer display.
-
-    Returns:
-        bool: True if timer is still active, False if expired
-    """
-    # Stop timer updates if we're not on the chat page anymore
-    # This prevents fragment errors when navigating to other pages
     if st.session_state.get("current_page") != "chat":
         return False
 
-    if getattr(st.session_state, "chat_timer_expired", False):
-        st.error("⏰ Time's up! Please choose one recommended item.")
+    expired = ensure_timer()
+    if expired:
+        st.info("⏰ Time's up! Please choose one recommended item.")
         return False
 
-    TIMER_DURATION = 900  # 15 minutes in seconds
-    current_time = time.time()
-    chat_start_time = st.session_state.get("chat_start_time", current_time)
-    elapsed_time = current_time - chat_start_time
-    remaining_time = max(0, TIMER_DURATION - elapsed_time)
+    end_ts_ms = int(st.session_state.chat_end_ts * 1000)
 
-    # Update timer expired status
-    timer_expired = remaining_time <= 0
-    st.session_state.chat_timer_expired = timer_expired
+    components.html(
+        f"""
+    <div id="timer" style="padding:8px;border:1px solid #ddd;border-radius:8px;">
+      ⏱️ Time remaining: <span id="mm">--</span>:<span id="ss">--</span>
+    </div>
+    <script>
+      (function(){{
+        if (window.__chatTimerStarted) return;
+        window.__chatTimerStarted = true;
 
-    # Display timer with real-time updates
-    if remaining_time > 0:
-        minutes = int(remaining_time // 60)
-        seconds = int(remaining_time % 60)
-        st.info(f"⏱️ Time remaining: {minutes:02d}:{seconds:02d}")
-    else:
-        # If there are no recommended items at all, just proceed to the next
-        # page (post questionnaire). This avoids trapping the participant on
-        # the chat page when no recommendations were produced.
-        displayed = st.session_state.get("displayed_items")
-        # displayed_items may be None, empty list, or a populated list of dicts
-        if not displayed:
-            # Advance to post questionnaire page and force a rerun so the
-            # UI updates immediately.
-            st.session_state.current_page = "post"
-            # Ensure timer expired flag is set (maintain invariant)
-            st.session_state.chat_timer_expired = True
-            st.rerun()
-        else:
-            st.error("⏰ Time's up! Please choose one recommended item.")
+        const end = {end_ts_ms};
+        const mm = document.getElementById('mm');
+        const ss = document.getElementById('ss');
 
-    return not timer_expired
+        function tick(){{
+          const now = Date.now();
+          let remain = Math.max(0, Math.floor((end - now)/1000));
+          mm.textContent = String(Math.floor(remain/60)).padStart(2,'0');
+          ss.textContent = String(remain%60).padStart(2,'0');
+
+          if (remain <= 0){{
+            // reload the TOP page exactly once; no iframe black screen
+            const url = new URL(window.top.location.href);
+            url.searchParams.set('timer_expired','1');
+            window.top.location.replace(url.toString());
+            return;
+          }}
+          setTimeout(tick, 1000);
+        }}
+        tick();
+      }})();
+    </script>
+    """,
+        height=60,
+        scrolling=False,
+    )
+
+    # If the reload already happened, mark it on the server
+    if st.query_params.get("timer_expired") == "1":
+        st.session_state.chat_timer_expired = True
+        st.info("⏰ Time's up! Please choose one recommended item.")
+        return False
+
+    return True
+
+
+def coalesce_stream(token_iter, flush_ms=100):
+    import time
+
+    buff = []
+    last = time.time()
+    for t in token_iter:
+        buff.append(t)
+        now = time.time()
+        if (now - last) * 1000 >= flush_ms:
+            yield "".join(buff)
+            buff = []
+            last = now
+    if buff:
+        yield "".join(buff)
 
 
 def build_chatbot() -> None:
     """Builds the chatbot interface in the left column."""
+    st.session_state.setdefault("assistant_busy", False)
+    st.session_state.setdefault("pending_user_message", None)
 
     if not st.session_state.chat_history:
         welcome = AIMessage(
@@ -127,18 +169,6 @@ def build_chatbot() -> None:
     else:
         # Normal chat input
         user_message = st.chat_input("What are you looking for?")
-
-    # # Only show chat input if timer hasn't expired
-    # if not st.session_state.get(
-    #     "chat_timer_expired", False
-    # ) or st.session_state.get("debug", False):
-    #     user_message = st.chat_input("What are you looking for?")
-    # else:
-    #     user_message = None
-    #     st.chat_input(
-    #         "Time expired -- please select one of the recommended items",
-    #         disabled=True,
-    #     )
 
     if user_message is not None and user_message.strip() != "":
         with messages_container, st.chat_message("user"):
@@ -206,7 +236,7 @@ def build_chatbot() -> None:
                 # Rerun to show the new message and hide buttons
                 st.rerun()
 
-        # Normal conversation flow - call LLM orchestrator
+        # Get response stream from orchestrator
         response_stream = get_response_stream(
             st.session_state.task,
             st.session_state.chat_history,
@@ -217,7 +247,11 @@ def build_chatbot() -> None:
         with messages_container, st.chat_message("ai"):
             if image_url:
                 st.image(image_url, width=300)
-            response = st.write_stream(response_stream["stream"])
+            raw_stream = response_stream["stream"]  # original token iterator
+            response = st.write_stream(
+                coalesce_stream(raw_stream, flush_ms=100)
+            )
+            # response = st.write_stream(response_stream["stream"])
 
         # Persist the AI message. If there is an image, use ImageMessage so
         # the UI can render the image consistently later without HTML hacks.

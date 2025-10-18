@@ -1,4 +1,9 @@
-You are given the user’s latest utterance containing many preferences in the {domain} domain. We cannot process all of them. Instead, generate a short, natural response that references the user’s utterance and politely asks them to choose one or two preferences that matter most.
+You are given the user's latest utterance containing many preferences in the {domain} domain. We cannot process all of them at once. Instead, generate a short, natural response that:
+1. Acknowledges the user's preferences
+2. Explains that it's better to focus on the most important aspects first and refine from there (this helps find better matches and makes the process more manageable)
+3. Politely asks them to choose one or two preferences that matter most right now
+
+Keep the tone friendly and helpful, making it clear this iterative approach will lead to better results.
 
 The latest user utterance:
 {latest_chat_history}

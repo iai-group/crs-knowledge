@@ -2,9 +2,12 @@
 """Parse conversation JSON files into human-readable text files.
 
 For each JSON file in a directory (default: `exports/Prolific-0919/conversations` then
-`exports/conversations`), write a `.txt` file to `exports/parsed_conversations` containing
+`exports/conversations`), write a `.md` file to `exports/parsed_conversations` containing
 only non-system messages in the order they appeared. Each line is prefixed with the role
 (`human` or `ai/assistant`) and the message content.
+
+This script also deduplicates consecutive agent messages that start with "Great! You've
+selected", keeping only the last one before a user turn or the end of the conversation.
 
 Usage:
   python3 scripts/parse_conversations.py [conversations_dir] [output_dir]
@@ -49,16 +52,9 @@ def parse_dir(src: Path, out_dir: Path) -> int:
         if domain and isinstance(screen, dict) and domain in screen:
             expertise = screen.get(domain)
 
-        # Create output path with expertise subdirectory
-        if expertise and isinstance(expertise, str) and expertise.strip():
-            expertise_dir = out_dir / expertise.strip()
-            expertise_dir.mkdir(parents=True, exist_ok=True)
-            out_p = expertise_dir / (p.stem + ".md")
-        else:
-            # Fallback to unknown if no expertise found
-            unknown_dir = out_dir / "unknown"
-            unknown_dir.mkdir(parents=True, exist_ok=True)
-            out_p = unknown_dir / (p.stem + ".md")
+        # Create output path directly in output directory (no subdirectories)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_p = out_dir / (p.stem + ".md")
 
         lines: List[str] = []
         # header: use prolific id if available, otherwise filename
@@ -102,7 +98,57 @@ def parse_dir(src: Path, out_dir: Path) -> int:
                 lines.append("")
                 lines.append("**All Expertise Levels:** " + "; ".join(parts))
         lines.append("")
-        for m in non_system:
+
+        # Deduplicate consecutive "Great! You've selected..." messages
+        # Keep only the last one before a user turn or end of conversation
+        deduplicated = []
+        i = 0
+        while i < len(non_system):
+            msg = non_system[i]
+            role = (msg.get("role") or "").strip().lower()
+            content = msg.get("content") or ""
+
+            # Check if this is an agent message starting with "Great! You've selected"
+            if role in (
+                "assistant",
+                "ai",
+                "agent",
+            ) and content.strip().startswith("Great! You've selected"):
+                # Look ahead to find consecutive similar messages
+                j = i
+                while j < len(non_system):
+                    next_msg = non_system[j]
+                    next_role = (next_msg.get("role") or "").strip().lower()
+                    next_content = next_msg.get("content") or ""
+
+                    # Stop if we hit a user message or a different type of agent message
+                    if next_role in ("human", "user", "participant"):
+                        break
+                    if next_role in (
+                        "assistant",
+                        "ai",
+                        "agent",
+                    ) and not next_content.strip().startswith(
+                        "Great! You've selected"
+                    ):
+                        break
+                    j += 1
+
+                # Keep only the last "Great! You've selected" message before the user/different message
+                if j > i + 1:
+                    # Multiple consecutive "Great! You've selected" messages found
+                    # Keep only the one at position j-1
+                    deduplicated.append(non_system[j - 1])
+                    i = j
+                else:
+                    # Just one message, keep it
+                    deduplicated.append(msg)
+                    i += 1
+            else:
+                deduplicated.append(msg)
+                i += 1
+
+        for m in deduplicated:
             role = (m.get("role") or "").strip()
             content = m.get("content") or ""
             # normalize role names to uppercase labels
@@ -113,7 +159,12 @@ def parse_dir(src: Path, out_dir: Path) -> int:
                 label = "User"
             # format: bold the User utterance content, labels in bold uppercase
             if label == "User":
-                content_str = f"**{content.strip()}**"
+                # Split by newlines, wrap each line with **, then combine back
+                content_lines = content.strip().split("\n")
+                wrapped_lines = [
+                    f"**{line}**" for line in content_lines if line.strip()
+                ]
+                content_str = "\n\t".join(wrapped_lines)
             else:
                 content_str = content
             lines.append(f"**{label}**: {content_str}")

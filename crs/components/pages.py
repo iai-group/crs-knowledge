@@ -9,8 +9,6 @@ pages need from the main module, e.g. `save_response`, `count_bicycle_category`,
 `crs/main.py` as the entry point.
 """
 
-import random
-
 import streamlit as st
 
 from crs.components import (
@@ -62,14 +60,16 @@ def render_current_page():
             st.session_state.chat_start_time = time.time()
             st.session_state.chat_timer_expired = False
 
+        # Build task first to ensure it's initialized before chatbot
+        with col2:
+            build_task()
+            build_recommended_items_tracker()
+
+        # Now build chatbot (task should be initialized)
         with col1:
             st.header("Assistant")
             build_timer()
             build_chatbot()
-
-        with col2:
-            build_task()
-            build_recommended_items_tracker()
 
         return
 
@@ -79,6 +79,12 @@ def render_current_page():
         return
 
     if current == "end":
+        # Mark study as completed and save
+        if not st.session_state.get("study_completed", False):
+            st.session_state.study_completed = True
+            if "auto_save_conversation" in st.session_state:
+                st.session_state.auto_save_conversation()
+
         # Show explicit completion instructions and Prolific code
         st.title("Study complete")
         completion_url = (

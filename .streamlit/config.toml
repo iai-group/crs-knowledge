@@ -3,14 +3,29 @@ port = 8501
 baseUrlPath = "knowledge"
 headless = true
 enableCORS = true
-# Use Streamlit's automatic file watcher so the app reloads on save.
-# If you experience issues with deep package introspection, set this
-# back to "none"; common values: "auto", "watchdog", "none".
+enableXsrfProtection = true
+maxConcurrentUsers = 20
+enableWebsocketCompression = false
+runOnSave = false
 fileWatcherType = "none"
+maxUploadSize = 200
+maxMessageSize = 200
 
 [browser]
 serverAddress = "gustav1.ux.uis.no"
 gatherUsageStats = false
 
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+
 [theme]
 base = "light"
+
+[runner]
+magicEnabled = false
+fastReruns = false
+enforceSerializableSessionState = false
+
+[global]
+developmentMode = false

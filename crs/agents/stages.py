@@ -24,7 +24,7 @@ class DecisionType(Enum):
     REDIRECT = "redirect"
     ASK_PRIORITIZE = "ask_prioritize"
     CONFIRM = "confirm"  # User is confirming or rejecting their item selection
-    QUESTION_ABOUT_RECOMMENDATION = "question_about_recommendation"  # User asks a question about a previously recommended item
+    ANSWER_ABOUT_RECOMMENDATION = "answer_about_recommendation"  # User asks a question about a previously recommended item
 
     @classmethod
     def from_string(
@@ -163,99 +163,6 @@ class PreferenceSummarizationStage(ConversationStage):
         return PreferenceStatus.OLD
 
 
-class RecommendedItemCheckStage(ConversationStage):
-    """Stage 1.5: Check if any previously recommended items satisfy new preferences."""
-
-    def execute(
-        self,
-        state: ConversationState,
-        task: Dict[str, Any],
-        chat_history: List[BaseMessage],
-    ) -> Optional[Dict[str, Any]]:
-        """Check if any previously recommended items satisfy the new preferences.
-
-        Returns:
-            The matching item dict if found, None otherwise
-        """
-        # If no previous recommendations, skip this check
-        if not state.recommended_items:
-            logger.debug("\nNo previously recommended items to check")
-            return None
-
-        prompt_template = self.prompt_loader.load_prompt(
-            "check_recommended_items_prompt.txt"
-        )
-        chain = self.chain_factory.create_chain(prompt_template)
-
-        # Get last 2 messages for context
-        latest_chat_history = state.get_latest_chat_history(
-            chat_history, count=2
-        )
-
-        # Format recommended items for the prompt
-        recommended_items_text = ""
-        for item in state.recommended_items:
-            item_id = (
-                item.get("id")
-                or item.get("parent_asin")
-                or item.get("metadata", {}).get("parent_asin")
-            )
-            title = (
-                item.get("title") or item.get("content", {}).get("title")
-                if isinstance(item.get("content"), dict)
-                else "Unknown Title"
-            )
-            content = item.get("content", "")
-            if isinstance(content, dict):
-                content = content.get("features", "") or content.get(
-                    "description", ""
-                )
-
-            recommended_items_text += (
-                f"\nItem ID: {item_id}\nTitle: {title}\nDetails: {content}\n---"
-            )
-
-        input_data = {
-            "domain": task.get("domain"),
-            "preferences": state.preferences,
-            "recommended_items": recommended_items_text,
-            "latest_chat_history": latest_chat_history,
-        }
-
-        response = chain.invoke(input_data).strip()
-        logger.debug(f"\nRecommended item check response:\n{response}\n")
-
-        # Parse the response
-        lines = response.split("\n")
-        if not lines:
-            return None
-
-        first_line = lines[0].strip().upper()
-
-        if first_line == "MATCH" and len(lines) >= 2:
-            # Extract the item ID from the second line
-            item_id = lines[1].strip()
-
-            # Find the matching item in recommended_items
-            for item in state.recommended_items:
-                rec_id = (
-                    item.get("id")
-                    or item.get("parent_asin")
-                    or item.get("metadata", {}).get("parent_asin")
-                )
-                if str(rec_id).strip() == item_id:
-                    logger.debug(
-                        f"Found matching previously recommended item: {item_id}"
-                    )
-                    return item
-
-            logger.debug(
-                f"Warning: MATCH returned but item ID {item_id} not found in recommended items"
-            )
-
-        return None
-
-
 class ItemRetrievalStage(ConversationStage):
     """Stage 2: Retrieve items based on user preferences."""
 
@@ -336,7 +243,7 @@ class ItemRetrievalStage(ConversationStage):
                     f"\n✗ Target item (asin: {target_asin}) NOT found in top 10"
                 )
 
-            if not state.recommended_items:
+            if len(state.recommended_items) < 1:
                 retrieved_items = [
                     item
                     for item in retrieved_items
@@ -373,6 +280,7 @@ class ItemSelectionStage(ConversationStage):
         state: ConversationState,
         task: Dict[str, Any],
         chat_history: List[BaseMessage],
+        target: Dict[str, Any] = None,
     ) -> Optional[Dict[str, Any]]:
         """Select the best item to recommend from retrieved items.
 
@@ -384,10 +292,25 @@ class ItemSelectionStage(ConversationStage):
             logger.debug("Warning: No retrieved items available for selection.")
             return None
 
+        items_to_select_from = state.retrieved_items + state.recommended_items
+
+        if (
+            target
+            and len(state.recommended_items) >= 4
+            and all(
+                target.get("id") not in item.get("id")
+                for item in items_to_select_from
+            )
+        ):
+            logger.debug(
+                "Target item not found in any items ready for recommendation."
+            )
+            return target
+
         # If only one item, return it directly
-        if len(state.retrieved_items) == 1:
+        if len(items_to_select_from) == 1:
             logger.debug("Only one item available, selecting it by default.")
-            return state.retrieved_items[0]
+            return items_to_select_from[0]
 
         prompt_template = self.prompt_loader.load_prompt(
             "item_selection_stage_prompt.txt"
@@ -397,19 +320,17 @@ class ItemSelectionStage(ConversationStage):
         latest_chat_history = state.get_latest_chat_history(chat_history)
 
         # Format items for the prompt
-        formatted_items = []
-        for idx, item in enumerate(state.retrieved_items, 1):
-            item_info = f"Item {idx}:\n"
-            item_info += f"  ID: {item.get('id', 'N/A')}\n"
-            item_info += f"  Title: {item.get('title', 'N/A')}\n"
-            item_info += f"  Features: {item.get('content', 'N/A')}\n"
-            formatted_items.append(item_info)
 
         input_data = {
             "domain": task.get("domain"),
             "preferences": state.preferences,
             "latest_chat_history": latest_chat_history,
-            "retrieved_items": "\n".join(formatted_items),
+            "retrieved_items": self.format_items(state.retrieved_items),
+            "recommended_items": (
+                self.format_items(state.recommended_items)
+                if len(state.recommended_items) >= 4
+                else "None"
+            ),
         }
 
         selected_id = chain.invoke(input_data).strip()
@@ -417,7 +338,8 @@ class ItemSelectionStage(ConversationStage):
 
         # Find the item with matching ID
         selected_item = None
-        for item in state.retrieved_items:
+
+        for item in items_to_select_from:
             if item.get("id") == selected_id:
                 selected_item = item
                 logger.debug(f"✓ Selected item: {item.get('title')}")
@@ -437,6 +359,16 @@ class ItemSelectionStage(ConversationStage):
         )
 
         return selected_item
+
+    def format_items(self, items):
+        formatted = []
+        for idx, item in enumerate(items, 1):
+            item_info = f"Item {idx}:\n"
+            item_info += f"  ID: {item.get('id', 'N/A')}\n"
+            item_info += f"  Title: {item.get('title', 'N/A')}\n"
+            item_info += f"  Features: {item.get('content', 'N/A')}\n"
+            formatted.append(item_info)
+        return "\n".join(formatted)
 
 
 class DecisionStage(ConversationStage):
@@ -463,17 +395,9 @@ class DecisionStage(ConversationStage):
         input_data = {
             "domain": task.get("domain"),
             "latest_chat_history": latest_chat_history,
-            "number_of_preferences": len(
-                [
-                    line
-                    for line in state.preferences.split("\n")
-                    if line.strip() != ""
-                ]
-            ),
+            "number_of_preferences": state.get_len_preferences(),
             "number_of_recommendations": len(state.retrieved_items),
-            "has_recommendation": (
-                "yes" if state.last_recommended_item else "no"
-            ),
+            "has_recommendation": ("yes" if state.recommended_items else "no"),
         }
 
         raw_decision_output = chain.invoke(input_data)
@@ -544,6 +468,99 @@ class RecommendationAnalyzerStage(ConversationStage):
         return aspects
 
 
+class QuestionAnswerStage(ConversationStage):
+    """Stage for answering questions about recommended items with nuanced comparison to target."""
+
+    def execute(
+        self,
+        state: ConversationState,
+        task: Dict[str, Any],
+        chat_history: List[BaseMessage],
+    ) -> Any:
+        """Answer a question about the recommended item with nuanced comparison to target.
+
+        This stage is called when users ask questions about a previously recommended item
+        (e.g., "Is this bike good for going uphill?"). Instead of absolute yes/no answers,
+        it provides nuanced responses by comparing the recommended item with the target item.
+
+        Args:
+            state: Conversation state (should have last_recommended_item set)
+            task: Task information including domain and target
+            chat_history: Chat history
+
+        Returns:
+            Dict with stream of response, or falls back to ResponseStage if no recommended item
+        """
+        # Get latest chat history which includes assistant's recommendation and user's question
+        # This provides full context for understanding which item the user is asking about
+        latest_chat_history = state.get_latest_chat_history(chat_history)
+
+        # Analyze the differences between ALL recommended items and target item
+        # to support comparison across multiple recommendations
+        target_item_metadata = task.get("target", {}).get("content", {})
+
+        # Format all recommended items for comparison
+        all_recommended_items_text = ""
+        for idx, item in enumerate(state.recommended_items, 1):
+            item_id = item.get("id", f"item_{idx}")
+            title = item.get("title", "Unknown Item")
+            content = item.get("content", "")
+            all_recommended_items_text += (
+                f"\n=== Recommended Item {idx} ===\n"
+                f"ID: {item_id}\n"
+                f"Title: {title}\n"
+                f"Details: {content}\n"
+            )
+
+        # Use a question-focused aspects extractor instead of the general
+        # explanation prompt to ensure differences are grounded in the user's
+        # question.
+        explanation_prompt = self.prompt_loader.load_prompt(
+            "elicit_relevant_aspects_prompt.txt"
+        )
+        explanation_chain = self.chain_factory.create_chain(explanation_prompt)
+
+        explanation_input = {
+            "domain": task.get("domain"),
+            "latest_chat_history": latest_chat_history,
+            "recommended_items": all_recommended_items_text,
+            "target_item_metadata": target_item_metadata,
+        }
+
+        comparison_aspects = explanation_chain.invoke(explanation_input).strip()
+
+        state.add_system_message(
+            f"Question-relevant comparison aspects: \n{comparison_aspects}"
+        )
+
+        # Now generate the nuanced answer using the question-specific prompt
+        prompt_template = self.prompt_loader.load_prompt(
+            "answer_about_recommendation_prompt.txt"
+        )
+        chain = self.chain_factory.create_chain(prompt_template)
+
+        latest_chat_history = state.get_latest_chat_history(chat_history)
+
+        # Format recommended items for the response prompt
+        recommended_items_summary = ""
+        for idx, item in enumerate(state.recommended_items, 1):
+            title = item.get("title", "Unknown Item")
+            recommended_items_summary += f"{idx}. {title}\n"
+
+        input_data = {
+            "domain": task.get("domain"),
+            "latest_chat_history": latest_chat_history,
+            "chat_history": chat_history,
+            "preferences": state.preferences,
+            "recommended_items": recommended_items_summary.strip(),
+            "recommended_items_details": all_recommended_items_text,
+            "target_item_metadata": target_item_metadata,
+            "comparison_aspects": comparison_aspects,
+        }
+
+        return {"stream": chain.stream(input_data)}
+
+
 class RecommendationStage(ConversationStage):
     """Stage 4: Generate recommendations using retrieved items."""
 
@@ -584,6 +601,13 @@ class RecommendationStage(ConversationStage):
             "recommendation_with_target_guidance_prompt.txt"
         )
 
+        # Check if this item has already been recommended
+        selected_item_id = selected_item.get("id")
+        has_been_recommended = any(
+            item.get("id") == selected_item_id
+            for item in state.recommended_items
+        )
+
         state.add_recommended_item(selected_item)
 
         chain = self.chain_factory.create_chain(prompt_template)
@@ -597,6 +621,7 @@ class RecommendationStage(ConversationStage):
             "latest_chat_history": latest_chat_history,
             "domain": task.get("domain"),
             "explanation_aspects": explanation_aspects,
+            "has_been_recommended": "yes" if has_been_recommended else "no",
         }
 
         return {
@@ -623,86 +648,6 @@ class RecommendationStage(ConversationStage):
             return main_image["thumb"]
 
         return ""
-
-
-class QuestionAnswerStage(ConversationStage):
-    """Stage for answering questions about recommended items with nuanced comparison to target."""
-
-    def execute(
-        self,
-        state: ConversationState,
-        task: Dict[str, Any],
-        chat_history: List[BaseMessage],
-    ) -> Any:
-        """Answer a question about the recommended item with nuanced comparison to target.
-
-        This stage is called when users ask questions about a previously recommended item
-        (e.g., "Is this bike good for going uphill?"). Instead of absolute yes/no answers,
-        it provides nuanced responses by comparing the recommended item with the target item.
-
-        Args:
-            state: Conversation state (should have last_recommended_item set)
-            task: Task information including domain and target
-            chat_history: Chat history
-
-        Returns:
-            Dict with stream of response, or falls back to ResponseStage if no recommended item
-        """
-        # First, extract the user's latest question (most recent human message)
-
-        # Use ConversationState helper to get the raw last user message
-        user_question = state.get_last_user_message(chat_history)
-
-        # Analyze the differences between recommended and target items with
-        # respect to the user's specific question. This uses a question-aware
-        # prompt that returns only aspects relevant to answering the question.
-        recommended_item = state.last_recommended_item
-        recommended_item_metadata = recommended_item.get("content", {})
-        target_item_metadata = task.get("target", {}).get("content", {})
-
-        # Use a question-focused aspects extractor instead of the general
-        # explanation prompt to ensure differences are grounded in the user's
-        # question.
-        explanation_prompt = self.prompt_loader.load_prompt(
-            "question_relevant_aspects_prompt.txt"
-        )
-        explanation_chain = self.chain_factory.create_chain(explanation_prompt)
-
-        explanation_input = {
-            "domain": task.get("domain"),
-            "user_question": user_question,
-            "recommended_item_metadata": recommended_item_metadata,
-            "target_item_metadata": target_item_metadata,
-        }
-
-        comparison_aspects = explanation_chain.invoke(explanation_input).strip()
-
-        state.add_system_message(
-            f"Question-relevant comparison aspects: \n{comparison_aspects}"
-        )
-
-        # Now generate the nuanced answer using the question-specific prompt
-        prompt_template = self.prompt_loader.load_prompt(
-            "question_about_recommendation_prompt.txt"
-        )
-        chain = self.chain_factory.create_chain(prompt_template)
-
-        latest_chat_history = state.get_latest_chat_history(chat_history)
-
-        input_data = {
-            "domain": task.get("domain"),
-            "latest_chat_history": latest_chat_history,
-            "chat_history": chat_history,
-            "preferences": state.preferences,
-            "recommended_item": recommended_item.get(
-                "title", "the recommended item"
-            ),
-            "recommended_item_metadata": recommended_item_metadata,
-            "target_item_metadata": target_item_metadata,
-            "comparison_aspects": comparison_aspects,
-        }
-
-        return {"stream": chain.stream(input_data)}
 
 
 class ResponseStage(ConversationStage):
@@ -745,7 +690,7 @@ class ResponseStage(ConversationStage):
         template_name = template_map[decision]
 
         logger.debug(
-            f"Loading template for decision {decision.value}:", template_name
+            f"Loading template for decision {decision.value}: {template_name}"
         )
         prompt_template = self.prompt_loader.load_prompt(template_name)
         chain = self.chain_factory.create_chain(prompt_template)

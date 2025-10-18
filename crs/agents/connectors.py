@@ -1,9 +1,14 @@
 import os
 
+import streamlit as st
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
+
+load_dotenv()
+
+CACHE_VERSION = "1"
 
 available_models = {
     "gemma3:latest": "ollama",
@@ -42,7 +47,6 @@ def get_google_model(model: str):
     """
     Get the Google model connector.
     """
-    load_dotenv()
     google_api_key = os.getenv("GOOGLE_API_KEY")
     google_model = ChatGoogleGenerativeAI(
         model=model,
@@ -52,15 +56,18 @@ def get_google_model(model: str):
     return google_model
 
 
+@st.cache_resource(show_spinner=False)
 def get_openai_model(model: str):
     """
     Get the OpenAI model connector.
     """
-    load_dotenv()
     openai_api_key = os.getenv("OPENAI_API_KEY")
     openai_model = ChatOpenAI(
         model=model,
         max_tokens=2048,
         openai_api_key=openai_api_key,
+        temperature=0.7,
+        max_retries=2,
+        timeout=60,
     )
     return openai_model

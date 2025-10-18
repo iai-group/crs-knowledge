@@ -24,7 +24,6 @@ class ConversationState:
     recommended_items: List[Dict[str, Any]] = field(default_factory=list)
     recommended_items_changed: bool = False
     filtered_out_items: List[Dict[str, Any]] = field(default_factory=list)
-    last_recommended_item: Optional[Dict[str, Any]] = None
 
     def update_preferences(
         self, new_preferences: str, num_preferences: int = None
@@ -54,7 +53,7 @@ class ConversationState:
         """Update the retrieved items list."""
         self.retrieved_items = items
         item_titles = [item.get("title", "Unknown") for item in items]
-        self.add_system_message(f"Retrieved items:\n{'\n'.join(item_titles)}")
+        self.add_system_message("Retrieved items:\n" + "\n".join(item_titles))
 
     def add_recommended_item(self, item: Dict[str, Any]):
         """Track an item that has been recommended to avoid repeating."""
@@ -65,9 +64,6 @@ class ConversationState:
         )
         if item_id and not self.is_item_already_recommended(item_id):
             self.recommended_items.append(item)
-            self.last_recommended_item = (
-                item  # Track the most recent recommendation
-            )
             item_title = (
                 item.get("title") or item.get("content", {}).get("title")
                 if isinstance(item.get("content"), dict)

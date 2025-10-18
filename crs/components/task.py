@@ -48,33 +48,30 @@ def load_task(domain: str, version: str = None) -> dict:
 
 
 def build_task():
-    domain = st.session_state.get("current_domain", "")
+    # If task already exists, don't reload it
+    task = st.session_state.get("task", None)
+    if task is None:
+        domain = st.session_state.get("current_domain", "")
+        version = st.session_state.get("task_version", None)
+        task, selected_version = load_task(domain, version)
 
-    # Get the task version from session state, or it will be randomly selected
-    version = st.session_state.get("task_version", None)
+        target = task.get("target", {})
+        target = {
+            "id": target.get("asin"),
+            "title": target.get("title"),
+            "content": target.get("content"),
+            "images": [{"large": task.get("img_path")}],
+        }
+        task["target"] = target
 
-    task, selected_version = load_task(domain, version)
-
-    # Store the version in session state if it was just selected
-    if selected_version and "task_version" not in st.session_state:
         st.session_state.task_version = selected_version
-
-    if task:
-        st.subheader("Your Task")
-        st.write(task.get("story", "No story provided."))
-
-        # Display the tip in an info box for better visibility
-        st.info(TASK_TIP)
-
-        # img_path = task.get("img_path")
-        # if img_path:
-        #     st.image(img_path, width=300, caption="Task Image")
-
         st.session_state.task = task
-    else:
-        # Capitalize domain for display to user
-        domain_display = domain.replace("_", " ").title()
-        st.error(f"Could not load task for domain: {domain_display}")
+
+    st.subheader("Your Task")
+    st.write(task.get("story", "No story provided."))
+
+    # Display the tip in an info box for better visibility
+    st.info(TASK_TIP)
 
 
 def get_item_image_url(item: dict) -> str:

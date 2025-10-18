@@ -17,7 +17,6 @@ from .stages import (  # SuccessDetectionStage,; UserIntentAnalysisStage,
     QuestionAnswerStage,
     RecommendationAnalyzerStage,
     RecommendationStage,
-    RecommendedItemCheckStage,
     ResponseStage,
 )
 from .state_manager import StateManager, StreamlitStateManager
@@ -38,9 +37,6 @@ class ConversationOrchestrator:
         self.state_manager = state_manager or StreamlitStateManager()
 
         self.preference_stage = PreferenceSummarizationStage(
-            self.model, self.prompt_loader
-        )
-        self.recommended_item_check_stage = RecommendedItemCheckStage(
             self.model, self.prompt_loader
         )
         self.retrieval_stage = ItemRetrievalStage(
@@ -70,23 +66,24 @@ class ConversationOrchestrator:
         chat_history: List[BaseMessage],
         session_id: str = "default",
     ) -> Any:
-        """Process a complete conversation turn.
+        """Process a complete conversation turn through the recommendation pipeline.
 
-        This method implements a consistent flow through all stages:
-        1. PreferenceSummarizationStage - extracts user preferences
-        1.5. RecommendedItemCheckStage (if new preferences) - checks if previously recommended items satisfy new preferences
-        2. ItemRetrievalStage (if new preferences) - retrieves matching items
-        3. DecisionStage - decides next action (ALWAYS called)
-        4. RecommendationAnalyzerStage (if recommending) - analyzes items
-        5. RecommendationStage OR ResponseStage - generates output
+        This method orchestrates a multi-stage conversation flow:
+        1. PreferenceSummarizationStage - extracts and tracks user preferences
+        2. ItemRetrievalStage (if new preferences) - retrieves matching items from catalog
+        3. DecisionStage - determines next action (ALWAYS called)
+        4. Special routing for questions about recommended items
+        5. ItemSelectionStage (if recommending) - selects best item from candidates
+        6. RecommendationAnalyzerStage (if recommending) - analyzes selected item
+        7. RecommendationStage OR ResponseStage - generates final output
 
         Args:
-            task: Task information including domain and target
-            chat_history: Complete conversation history
-            session_id: Session identifier for state management
+            task: Task information including domain and target item description
+            chat_history: Complete conversation history as list of messages
+            session_id: Session identifier for state management (default: "default")
 
         Returns:
-            Response dict with stream and optional image_url
+            Response dict containing stream generator and optional image_url for recommendation
         """
         state = self.state_manager.get_state(session_id)
         # Update turn count
@@ -119,31 +116,6 @@ class ConversationOrchestrator:
         # Stage 1: Summarize preferences
         pref_status = self.preference_stage.execute(state, task, chat_history)
 
-        if pref_status == PreferenceStatus.NEW:
-            # Stage 1.5: If new preferences, check if any previously recommended items satisfy them
-            # before retrieving new items from the database
-            matching_item = self.recommended_item_check_stage.execute(
-                state, task, chat_history
-            )
-
-            # If a matching item is found, add it back to retrieved_items so it can be recommended again
-            if matching_item:
-                logger.debug(
-                    f"Previously recommended item satisfies new preferences, adding to retrieved items"
-                )
-                # Add the matching item to the front of retrieved_items
-                if matching_item not in state.retrieved_items:
-                    state.retrieved_items.insert(0, matching_item)
-            else:
-                # No match found, proceed with normal retrieval
-                logger.debug(
-                    "No previously recommended items match new preferences, retrieving new items"
-                )
-                # Stage 2
-                self.retrieval_stage.execute(state, task, chat_history)
-
-        # If user provided too many preferences at once, override decision
-        # to ask them to prioritize
         if pref_status == PreferenceStatus.TOO_MANY:
             logger.debug(
                 "Too many preferences provided, asking user to prioritize."
@@ -152,17 +124,21 @@ class ConversationOrchestrator:
                 state, task, chat_history, decision=DecisionType.ASK_PRIORITIZE
             )
 
+        if pref_status == PreferenceStatus.NEW:
+            # Stage 2: In new preferences, retrieve items
+            self.retrieval_stage.execute(state, task, chat_history)
+
         # Stage 3: Make decision (ALWAYS called for consistent flow)
         decision = self.decision_stage.execute(state, task, chat_history)
 
         # If the user asks a question about a previously recommended item,
         # route to the specialized question-answering stage which produces
         # a nuanced, comparative answer.
-        if decision == DecisionType.QUESTION_ABOUT_RECOMMENDATION:
+        if decision == DecisionType.ANSWER_ABOUT_RECOMMENDATION:
             # Validate we have a recommended item to discuss
-            if not state.last_recommended_item:
+            if not state.recommended_items:
                 logger.debug(
-                    "Warning: QUESTION_ABOUT_RECOMMENDATION but no last_recommended_item. "
+                    "Warning: ANSWER_ABOUT_RECOMMENDATION but no recommended_items. "
                     "Falling back to general ANSWER."
                 )
                 # Fall back to general answer response
@@ -185,7 +161,7 @@ class ConversationOrchestrator:
 
             # Stage 4: Select the best item from retrieved items
             selected_item = self.item_selection_stage.execute(
-                state, task, chat_history
+                state, task, chat_history, target=task.get("target")
             )
 
             # If item selection fails, fall back to elicit

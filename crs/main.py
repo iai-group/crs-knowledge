@@ -1,9 +1,14 @@
 """Example of a main file."""
 
+# Set environment variable before any imports to disable Streamlit file watcher
+# This prevents the RuntimeError with torch.classes in concurrent user scenarios
+import os
+
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
+
 import argparse
 import json
 import logging
-import os
 import random
 import uuid
 from datetime import datetime
@@ -15,11 +20,18 @@ from crs.components.pages import render_current_page
 from crs.config_loader import get_config_loader
 
 logging.basicConfig(
-    level=logging.WARNING,
+    level=logging.WARNING,  # Default to WARNING
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Keep other libraries quiet by default
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("watchdog").setLevel(logging.WARNING)
+logging.getLogger("urllib").setLevel(logging.WARNING)
 
 
 def get_new_save_filename() -> str:
@@ -99,10 +111,6 @@ def init(args, model_name: str = None):
                 f"Invalid domain '{args.domain}'. Must be one of {st.session_state.domains}"
             )
 
-    if "task_version" not in st.session_state:
-        # Randomly select short or long version for tasks
-        st.session_state.task_version = random.choice(["short", "long"])
-
 
 def auto_save_conversation() -> None:
     """Automatically saves the current conversation to a JSON file."""
@@ -118,6 +126,7 @@ def auto_save_conversation() -> None:
         "post_task_answers": st.session_state.get("post_answers", {}),
         "current_domain": st.session_state.get("current_domain", ""),
         "task_version": st.session_state.get("task_version", ""),
+        "completed": st.session_state.get("study_completed", False),
         "messages": [],
     }
     # Extract messages from chat_history.
@@ -174,14 +183,13 @@ def parse_args() -> argparse.Namespace:
         "--page",
         type=str,
         choices=[
-            "front",
-            "knowledge",
+            "screen",
+            "pre",
             "start",
             "chat",
             "post",
             "end",
             "prolific_redirect",
-            "screen",
         ],
         help="Page to start on",
     )
@@ -204,6 +212,10 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     args = parse_args()
     if args.debug:
+        # In debug mode, set root logger and all CRS modules to DEBUG level
+        logging.getLogger().setLevel(logging.DEBUG)  # Root logger
         logger.setLevel(logging.DEBUG)
+        logging.getLogger("crs").setLevel(logging.DEBUG)  # All crs.* modules
+        logger.info("Debug mode enabled - verbose logging activated")
     init(args)
     main(args)

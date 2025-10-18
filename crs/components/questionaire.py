@@ -39,52 +39,16 @@ def save_screen_response(
         st.warning(f"Failed to save response to {out_path}: {e}")
 
 
-# def count_bicycle_category(
-#     category: str, out_path: str = "exports/screen_results.jsonl"
-# ) -> int:
-#     """Count participants in a specific bicycle knowledge category.
-
-#     Args:
-#         category: Knowledge level (e.g., "Novice", "Intermediate", "Expert")
-#         out_path: Path to screen_results.jsonl file
-
-#     Returns:
-#         Count of participants with the given knowledge level for bicycle domain
-#     """
-#     if not os.path.exists(out_path):
-#         return 0
-#     count = 0
-#     try:
-#         with open(out_path, "r", encoding="utf-8") as f:
-#             for line in f:
-#                 line = line.strip()
-#                 if not line:
-#                     continue
-#                 try:
-#                     rec = json.loads(line)
-#                 except Exception:
-#                     continue
-#                 answers = (
-#                     rec.get("answers", {}) if isinstance(rec, dict) else {}
-#                 )
-#                 # Use internal domain name "bicycle" (not "bicycles")
-#                 val = answers.get("bicycle", "")
-#                 if isinstance(val, str) and val.lower() == category.lower():
-#                     count += 1
-#     except Exception:
-#         return 0
-#     return count
-
-
 def count_participants_by_domain_expertise(
     out_path: str = "exports/screen_results.jsonl",
 ) -> dict:
     """
     Count participants by their assigned domain-expertise combination.
+    Only counts participants who completed the study.
 
     Returns:
         A dictionary with keys like "bicycle-novice", "digital_camera-expert", etc.
-        mapping to their participant counts.
+        mapping to their completed participant counts.
     """
     counts = {}
     if not os.path.exists(out_path):
@@ -99,6 +63,10 @@ def count_participants_by_domain_expertise(
                 try:
                     rec = json.loads(line)
                 except Exception:
+                    continue
+
+                # Only count completed participants
+                if not rec.get("completed", False):
                     continue
 
                 # Get the assigned domain and expertise from the record
@@ -147,8 +115,8 @@ def assign_domain_to_participant(
     # Define expertise ranking (lower number = higher priority)
     expertise_rank = {
         "expert": 0,
-        "intermediate": 1,
-        "novice": 2,
+        "intermediate": 2,
+        "novice": 1,
     }
 
     # Build list of candidates: (count, expertise_rank, domain_name, expertise_level)
@@ -310,9 +278,9 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
 
         # Center the questionnaire by creating a three-column layout and
         # placing the form in the middle (narrower) column.
-        left, middle, right = st.columns([1, 2, 1])
+        left, middle, right = st.columns([1, 4, 1])
         with middle:
-            with st.form("screen_questionnaire_form"):
+            with st.form("screen_questionnaire_form", width=800):
                 st.markdown("### Self assessment")
                 st.write(
                     "Please rate your domain knowledge for each domain using the 3-point scale."
@@ -331,6 +299,9 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                         display: flex !important;
                         justify-content: space-between !important;
                         gap: 0.4rem !important;
+                        width: 600px !important; /* fixed width to prevent resizing */
+                        max-width: 600px !important;
+                        min-width: 600px !important;
                     }
                     /* Make each label take equal space and center its contents */
                     div[role="radiogroup"] > label {
@@ -338,7 +309,7 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                         display: flex !important;
                         align-items: center !important;
                         justify-content: center !important;
-                        min-width: 42px;
+                        min-width: 120px;
                     }
                     /* Slight spacing between radio and its label text */
                     div[role="radiogroup"] > label input[type="radio"] {
@@ -370,18 +341,16 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                 # We want the option titles above the grid, so render a small
                 # header row with the titles and then place the radios below.
                 # Make the label column narrower so labels sit closer to controls
-                option_header_cols = st.columns([0.8, 4.2])
+                option_header_cols = st.columns([0.8, 3.2])
                 # left column reserved for the domain label (empty header)
                 option_header_cols[0].write("\u00a0")  # non-breaking space
                 # create a row in the right column to show each option title
-                # Use 4 grid columns: an empty cell for the placeholder radio
-                # followed by three cells for the visible option titles so
-                # titles align with the last three radio controls.
-                header_html = "<div style='display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; align-items:center;'>"
+                # Use flexbox to match radio button spacing behavior
+                header_html = "<div style='display:flex; justify-content:space-between; gap:0.4rem; align-items:center; width:600px; max-width:600px; min-width:600px;'>"
                 # empty cell to align with the placeholder radio
-                header_html += "<div></div>"
+                header_html += "<div style='flex: 1 1 0; min-width:120px; display:flex; align-items:center; justify-content:center;'></div>"
                 for opt in options:
-                    header_html += f"<div style='text-align:center; font-size:13px; margin-left: -30px; font-weight:600'>{opt}</div>"
+                    header_html += f"<div style='flex: 1 1 0; min-width:120px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:13px; font-weight:600'>{opt}</div>"
                 header_html += "</div>"
                 option_header_cols[1].markdown(
                     header_html, unsafe_allow_html=True
@@ -389,7 +358,7 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
 
                 for domain in domains:
                     # left label column and right control column inside the centered column
-                    row_cols = st.columns([0.8, 4.2])
+                    row_cols = st.columns([1, 4])
                     # use write() instead of bold markdown to avoid extra vertical padding
                     row_cols[0].write(domain)
 
@@ -404,7 +373,7 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                     # grid header above handles the visible titles and
                     # aligns with the radio columns.
                     def _fmt(x):
-                        return "" if x == options[2] else "\u00a0" * 4
+                        return ""  # if x == options[2] else "\u00a0" * 40
 
                     row_cols[1].radio(
                         f"{domain} rating",
@@ -416,7 +385,7 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                     )
 
                 # Always show the submit button; validate when submitted
-                btn_l, btn_r = st.columns([3, 1])
+                btn_l, btn_r = st.columns([6, 1])
                 submitted = btn_r.form_submit_button("Continue")
 
                 if submitted:
@@ -539,8 +508,8 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
         placeholder = "Select..."
         options_with_placeholder = [placeholder] + options
 
-        left_col, mid_col, right_col = st.columns([1, 4, 1])
-        with mid_col, st.form("knowledge_questionnaire_form"):
+        left_col, mid_col, right_col = st.columns([1, 6, 1])
+        with mid_col, st.form("knowledge_questionnaire_form", width=1000):
             st.markdown(
                 "<div style='font-size:1.05rem; font-weight:600'>Please indicate your agreement with the following statements.</div>",
                 unsafe_allow_html=True,
@@ -556,22 +525,26 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                     gap: 0.4rem !important;
                     align-items: center !important;
                     box-sizing: border-box !important;
-                            background: #f7f7f7 !important;
-                            min-height: 112px !important; /* increased baseline height */
-                            padding: 12px 6px !important; /* balanced vertical padding */
-                            border-radius: 0 6px 6px 0 !important;
-                            margin-left: -6px !important;
-                            position: relative !important;
-                            z-index: 3 !important; /* ensure radios are above other content */
-                            box-sizing: border-box !important;
-                            overflow: visible !important;
+                    background: #f7f7f7 !important;
+                    min-height: 112px !important; /* increased baseline height */
+                    width: 600px !important; /* fixed width to prevent resizing */
+                    max-width: 600px !important;
+                    min-width: 600px !important;
+                    padding: 12px 6px !important; /* balanced vertical padding */
+                    border-radius: 0 6px 6px 0 !important;
+                    margin-left: -6px !important;
+                    margin-bottom: 8px !important;
+                    position: relative !important;
+                    z-index: 3 !important; /* ensure radios are above other content */
+                    box-sizing: border-box !important;
+                    overflow: visible !important;
                 }
                 div[role="radiogroup"] > label {
                     flex: 1 1 0 !important;
                     display: flex !important;
                     align-items: center !important;
                     justify-content: center !important;
-                    min-width: 42px;
+                    min-width: 70px;
                     height: auto !important; /* stretch with the radiogroup */
                     padding: 6px 0 !important; /* allow vertical breathing */
                     line-height: 1.1 !important;
@@ -591,17 +564,27 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                 unsafe_allow_html=True,
             )
 
-            hdr_l, hdr_r = st.columns([0.4, 4])
-            hdr_l.write("\u00a0")
-            hdr_html = "<div style='display:grid; grid-template-columns: repeat(6, 1fr); gap:6px; align-items:center;'>"
-            hdr_html += "<div></div>"
+            hdr_html = "<div style='display:flex; justify-content:space-between; gap:0.4rem; align-items:center; width:600px; max-width:600px; min-width:600px;'>"
+            hdr_html += "<div style='flex: 1 1 0; min-width:70px; display:flex; align-items:center; justify-content:center;'></div>"  # placeholder column
+            # Break labels into two lines more naturally
+            label_breaks = {
+                "Definitely True": "Definitely<br>True",
+                "Probably True": "Probably<br>True",
+                "I don't know": "I don't<br>know",
+                "Probably False": "Probably<br>False",
+                "Definitely False": "Definitely<br>False",
+            }
             for opt in options:
-                hdr_html += f"<div style='text-align:center; font-size:15px; padding:24px 10px; margin-left:-20px; font-weight:600'>{opt}</div>"
+                formatted_opt = label_breaks.get(opt, opt)
+                hdr_html += f"<div style='flex: 1 1 0; min-width:70px; display:flex; align-items:center; justify-content:center; margin-left: -20px; text-align:center; font-size:14px; font-weight:600; line-height:1.3;'>{formatted_opt}</div>"
             hdr_html += "</div>"
             answers = {}
             for sec_title, items in sections:
                 title_col, header_col = st.columns([3, 5])
-                title_col.subheader(sec_title)
+                title_col.markdown(
+                    f"<h4 style='margin:0; font-size:1.1rem;'>{sec_title}</h4>",
+                    unsafe_allow_html=True,
+                )
                 header_col.markdown(hdr_html, unsafe_allow_html=True)
                 for i, stmt in enumerate(items):
                     key = f"q_{sec_title}_{i}".replace(" ", "_")
