@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -107,6 +108,56 @@ class ConversationStage(ABC):
 class PreferenceSummarizationStage(ConversationStage):
     """Stage 1: Summarize user preferences from conversation history."""
 
+    def _calculate_preference_similarity(
+        self, old_preferences: str, new_preferences: str
+    ) -> float:
+        """Calculate Jaccard similarity between old and new preferences.
+
+        Uses word-level tokenization to compute set-based Jaccard similarity.
+        This is lightweight and robust to additions/removals of preferences.
+
+        Args:
+            old_preferences: Previous preference text
+            new_preferences: Updated preference text
+
+        Returns:
+            Jaccard similarity score between 0.0 (completely different) and 1.0 (identical)
+        """
+        # Handle empty cases
+        if not old_preferences and not new_preferences:
+            return 1.0  # Both empty = identical
+        if not old_preferences or not new_preferences:
+            return 0.0  # One empty, one not = completely different
+
+        # Tokenize into words (lowercase, alphanumeric only)
+        def tokenize(text: str) -> set:
+            words = text.lower().split()
+            # Filter out common punctuation and keep only alphanumeric tokens
+            return set(
+                word.strip(".,!?;:()[]{}\"'")
+                for word in words
+                if word.strip(".,!?;:()[]{}\"'")
+            )
+
+        old_tokens = tokenize(old_preferences)
+        new_tokens = tokenize(new_preferences)
+
+        # Jaccard similarity: |intersection| / |union|
+        intersection = old_tokens & new_tokens
+        union = old_tokens | new_tokens
+
+        if not union:
+            return 1.0  # Both had only punctuation = treat as identical
+
+        similarity = len(intersection) / len(union)
+
+        logger.debug(
+            f"Preference similarity: {similarity:.3f} "
+            f"(intersection: {len(intersection)}, union: {len(union)})"
+        )
+
+        return similarity
+
     def execute(
         self,
         state: ConversationState,
@@ -126,14 +177,15 @@ class PreferenceSummarizationStage(ConversationStage):
         # Get last 2 messages (assistant question + user response) for context
         # This helps interpret confirmations like "Yes" in response to questions
         latest_chat_history = state.get_latest_chat_history(chat_history)
+        old_preferences = state.get_preferences()
+        num_old_pref = state.get_len_preferences()
 
         input_data = {
             "domain": task.get("domain"),
-            "current_preferences": state.preferences,
+            "current_preferences": old_preferences,
             "latest_chat_history": latest_chat_history,
         }
 
-        num_pref = state.get_len_preferences()
         updated_preferences = chain.invoke(input_data).strip()
         number_of_new_preferences = len(
             [
@@ -143,7 +195,7 @@ class PreferenceSummarizationStage(ConversationStage):
             ]
         )
 
-        if number_of_new_preferences > num_pref + 3:
+        if number_of_new_preferences > num_old_pref + 3:
             return PreferenceStatus.TOO_MANY
 
         state.update_preferences(updated_preferences, number_of_new_preferences)
@@ -154,11 +206,32 @@ class PreferenceSummarizationStage(ConversationStage):
             f"Updated to {number_of_new_preferences} preferences: {updated_preferences}"
         )
 
-        if (
-            number_of_new_preferences >= 1
-            and number_of_new_preferences != num_pref
-        ):
+        # Determine if preferences have meaningfully changed
+        has_preferences = number_of_new_preferences >= 1
+        count_changed = number_of_new_preferences != num_old_pref
+
+        # If count changed, definitely NEW (no need to check similarity)
+        if has_preferences and count_changed:
+            logger.debug(
+                f"Detected NEW preferences (count changed: {num_old_pref} → {number_of_new_preferences})"
+            )
             return PreferenceStatus.NEW
+
+        # If count is the same, check if content changed (substitution case)
+        # Only compute similarity when counts are equal
+        if has_preferences and number_of_new_preferences == num_old_pref:
+            similarity = self._calculate_preference_similarity(
+                old_preferences, updated_preferences
+            )
+
+            # A similarity < 1.0 indicates at least one preference was modified/replaced
+            SIMILARITY_THRESHOLD = 0.95
+
+            if similarity < SIMILARITY_THRESHOLD:
+                logger.debug(
+                    f"Detected NEW preferences (content changed with same count, similarity={similarity:.3f})"
+                )
+                return PreferenceStatus.NEW
 
         return PreferenceStatus.OLD
 
@@ -227,9 +300,9 @@ class ItemRetrievalStage(ConversationStage):
             )
 
         # Select top 10 items from the filtered list
-        retrieved_items = unrecommended_items[:10]
+        retrieved_items = unrecommended_items  # [:10]
 
-        target_asin = task.get("target", {}).get("asin")
+        target_asin = task.get("target", {}).get("id")
         if target_asin:
             target_found = any(
                 item.get("id") == target_asin for item in retrieved_items
@@ -243,7 +316,7 @@ class ItemRetrievalStage(ConversationStage):
                     f"\n✗ Target item (asin: {target_asin}) NOT found in top 10"
                 )
 
-            if len(state.recommended_items) < 1:
+            if len(state.recommended_items) <= 1:
                 retrieved_items = [
                     item
                     for item in retrieved_items
@@ -256,9 +329,9 @@ class ItemRetrievalStage(ConversationStage):
         # Check if target item is in top 10 (for logging purposes)
 
         # Log retrieved items
-        for item in retrieved_items:
+        for item in retrieved_items[:5]:
             logger.debug(
-                f"Retrieved item: {item.get('title', 'Unknown Title')} (Score: {item.get('score', 0):.4f})"
+                f"Retrieved item: {item.get('id', 'Unknown ID')} {item.get('title', 'Unknown Title')} (Score: {item.get('score', 0):.4f})"
             )
 
         # Update state with retrieved items
@@ -321,29 +394,43 @@ class ItemSelectionStage(ConversationStage):
 
         # Format items for the prompt
 
-        input_data = {
-            "domain": task.get("domain"),
-            "preferences": state.preferences,
-            "latest_chat_history": latest_chat_history,
-            "retrieved_items": self.format_items(state.retrieved_items),
-            "recommended_items": (
-                self.format_items(state.recommended_items)
-                if len(state.recommended_items) >= 4
-                else "None"
-            ),
-        }
-
-        selected_id = chain.invoke(input_data).strip()
-        logger.debug(f"\nLLM selected item ID: {selected_id}")
-
-        # Find the item with matching ID
-        selected_item = None
-
-        for item in items_to_select_from:
-            if item.get("id") == selected_id:
-                selected_item = item
-                logger.debug(f"✓ Selected item: {item.get('title')}")
+        items = deepcopy(state.retrieved_items)
+        i = 0
+        while True:
+            i += 1
+            if not items:
                 break
+
+            input_data = {
+                "domain": task.get("domain"),
+                "preferences": state.preferences,
+                "latest_chat_history": latest_chat_history,
+                "retrieved_items": self.format_items(items[:10]),
+                "recommended_items": (
+                    self.format_items(state.recommended_items)
+                    if len(state.recommended_items) >= 4
+                    else "None"
+                ),
+            }
+
+            selected_id = chain.invoke(input_data).strip()
+            logger.debug(
+                f"\nItteration {i}. LLM selected item ID: {selected_id}"
+            )
+
+            # Find the item with matching ID
+            selected_item = None
+
+            for item in items_to_select_from:
+                if item.get("id") == selected_id:
+                    selected_item = item
+                    logger.debug(f"✓ Selected item: {item.get('title')}")
+                    break
+
+            if selected_item is not None:
+                break
+            else:
+                items = items[10:]
 
         # If ID doesn't match exactly, fall back to first item
         if selected_item is None:

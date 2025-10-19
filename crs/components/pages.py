@@ -63,13 +63,15 @@ def render_current_page():
         # Build task first to ensure it's initialized before chatbot
         with col2:
             build_task()
-            build_recommended_items_tracker()
 
         # Now build chatbot (task should be initialized)
         with col1:
             st.header("Assistant")
             build_timer()
             build_chatbot()
+
+        with col2:
+            build_recommended_items_tracker()
 
         return
 

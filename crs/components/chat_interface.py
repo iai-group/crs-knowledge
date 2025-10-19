@@ -117,7 +117,7 @@ def build_chatbot() -> None:
         )
         st.session_state.chat_history.append(welcome)
 
-    messages_container = st.container(height=500)
+    messages_container = st.container(height=550)
 
     with messages_container:
         # Display the conversation history

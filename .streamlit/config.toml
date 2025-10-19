@@ -4,7 +4,6 @@ baseUrlPath = "knowledge"
 headless = true
 enableCORS = true
 enableXsrfProtection = true
-maxConcurrentUsers = 20
 enableWebsocketCompression = false
 runOnSave = false
 fileWatcherType = "none"
