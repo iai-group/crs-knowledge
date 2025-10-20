@@ -37,7 +37,7 @@ def load_task(domain: str, version: str = None) -> dict:
         with open(task_file, "r", encoding="utf-8") as f:
             tasks = json.load(f)
         if tasks:
-            selected_task = random.choice(tasks[1:])
+            selected_task = random.choice(tasks)
             return selected_task, version
         else:
             logger.error("No tasks found in %s", task_file)

@@ -118,6 +118,15 @@ def auto_save_conversation() -> None:
     filepath = os.path.join(
         "exports", "conversations", st.session_state.auto_save_filename
     )
+    target_id = (
+        st.session_state.get("task", {}).get("target", {}).get("id", "unknown")
+    )
+    target_title = (
+        st.session_state.get("task", {})
+        .get("target", {})
+        .get("title", "unknown")
+    )
+
     conversation_data = {
         "last_saved": datetime.now().isoformat(),
         "prolific": st.session_state.get("prolific", {}),
@@ -127,6 +136,7 @@ def auto_save_conversation() -> None:
         "current_domain": st.session_state.get("current_domain", ""),
         "task_version": st.session_state.get("task_version", ""),
         "completed": st.session_state.get("study_completed", False),
+        "target": {"id": target_id, "title": target_title},
         "messages": [],
     }
     # Extract messages from chat_history.

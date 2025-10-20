@@ -195,7 +195,7 @@ class PreferenceSummarizationStage(ConversationStage):
             ]
         )
 
-        if number_of_new_preferences > num_old_pref + 3:
+        if number_of_new_preferences > num_old_pref + 4:
             return PreferenceStatus.TOO_MANY
 
         state.update_preferences(updated_preferences, number_of_new_preferences)

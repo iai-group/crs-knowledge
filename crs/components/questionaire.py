@@ -50,6 +50,22 @@ def count_participants_by_domain_expertise(
         A dictionary with keys like "bicycle-novice", "digital_camera-expert", etc.
         mapping to their completed participant counts.
     """
+    # Prefer loading precomputed counts if available.
+    counts_path = os.path.join("exports", "screen_counts.json")
+    if os.path.exists(counts_path):
+        try:
+            with open(counts_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            logger.warning(
+                "Failed to load precomputed counts from %s: %s; falling back to raw log counting",
+                counts_path,
+                e,
+            )
+
+    # Fallback: count from the raw JSONL screen results (original behaviour)
     counts = {}
     if not os.path.exists(out_path):
         return counts
@@ -63,10 +79,6 @@ def count_participants_by_domain_expertise(
                 try:
                     rec = json.loads(line)
                 except Exception:
-                    continue
-
-                # Only count completed participants
-                if not rec.get("completed", False):
                     continue
 
                 # Get the assigned domain and expertise from the record

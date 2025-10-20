@@ -1,5 +1,7 @@
 """State management for conversations."""
 
+import json
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -73,6 +75,56 @@ class ConversationState:
                 f"Added to recommended: {item_id} ({item_title})"
             )
             self.recommended_items_changed = True
+            # If this is the first recommended item in the conversation,
+            # increment the persistent screen counts so assignment balancing
+            # can use an up-to-date cached value.
+            try:
+                # Check this is the first recommendation
+                if len(self.recommended_items) == 1:
+                    # Use the module-level Streamlit import (`st`) already available
+                    current_domain = st.session_state.get("current_domain")
+                    screen_answers = (
+                        st.session_state.get("screen_answers", {}) or {}
+                    )
+                    if current_domain:
+                        expertise = screen_answers.get(current_domain)
+                        if expertise:
+                            counts_path = os.path.join(
+                                "exports", "screen_counts.json"
+                            )
+                            try:
+                                if os.path.exists(counts_path):
+                                    with open(
+                                        counts_path, "r", encoding="utf-8"
+                                    ) as cf:
+                                        counts = json.load(cf)
+                                        if not isinstance(counts, dict):
+                                            counts = {}
+                                else:
+                                    counts = {}
+                            except Exception:
+                                counts = {}
+
+                            key = f"{current_domain}-{expertise.lower()}"
+                            counts[key] = counts.get(key, 0) + 1
+
+                            try:
+                                os.makedirs(
+                                    os.path.dirname(counts_path) or "exports",
+                                    exist_ok=True,
+                                )
+                                with open(
+                                    counts_path, "w", encoding="utf-8"
+                                ) as cf:
+                                    json.dump(
+                                        counts, cf, ensure_ascii=False, indent=2
+                                    )
+                            except Exception:
+                                # Don't let failures here break the conversation flow
+                                pass
+            except Exception:
+                # If Streamlit not available or any other issue, silently skip
+                pass
 
     def is_item_already_recommended(self, item_id: str) -> bool:
         """Check if an item has already been recommended."""
