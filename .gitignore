@@ -147,3 +147,10 @@ dmypy.json
 /crs/
 /data/
 /tests/
+
+# Do not track file while cleaning up
+/requirements.txt
+/.flake8
+/.pre-commit-config.yaml
+/conftest.py
+/pyproject.toml
