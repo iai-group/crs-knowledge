@@ -137,3 +137,8 @@ dmypy.json
 # Item datasets
 /data/items/
 /data/raw
+
+# Ignore streamlit and local config/scripts directories
+.streamlit/
+/config/
+/scripts/

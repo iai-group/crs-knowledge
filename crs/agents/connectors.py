@@ -18,6 +18,7 @@ available_models = {
     "gpt-4.1-nano": "openai",
     "gpt-4.1-mini": "openai",
     "gpt-5-nano": "openai",
+    "gpt-5": "openai",
 }
 
 
@@ -64,9 +65,9 @@ def get_openai_model(model: str):
     openai_api_key = os.getenv("OPENAI_API_KEY")
     openai_model = ChatOpenAI(
         model=model,
-        max_tokens=2048,
+        max_tokens=4096,
         openai_api_key=openai_api_key,
-        temperature=0.7,
+        # temperature=0.7,
         max_retries=2,
         timeout=60,
     )
