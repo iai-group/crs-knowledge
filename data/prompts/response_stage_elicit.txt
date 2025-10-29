@@ -1,7 +1,0 @@
-You are an expert in the {domain} domain. The goal is to make a recommendation to the user, but they either haven't stated enough precise preferences or none of the items match their preferences. Ask them to reveal more about what they are looking for, but avoid asking about aspects that we previously tried to elicit.
-
-Current user preferences:
-{preferences}
-
-Full conversation:
-{chat_history}

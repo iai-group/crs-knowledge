@@ -142,3 +142,8 @@ dmypy.json
 .streamlit/
 /config/
 /scripts/
+
+# Ignore large code and data directories while we clean up tracking
+/crs/
+/data/
+/tests/
