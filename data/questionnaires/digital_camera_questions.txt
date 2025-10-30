@@ -1,0 +1,41 @@
+Exposure & Mechanics
+A higher f-number means a smaller aperture opening.
+Shutter speed primarily controls motion blur, aperture primarily controls depth of field.
+Neutral-density filters let you use slower shutter speeds without changing depth of field.
+Expose-to-the-right (ETTR) reduces noise in RAW when highlights aren’t clipped.
+Electronic first-curtain shutter can reduce shutter shock.
+
+Sensors & Image Quality
+Larger sensors generally deliver better low-light performance at the same tech generation and pixel count.
+Backside-illuminated sensors can improve high-ISO performance over front-side designs.
+Dual-native ISO sensors have two analog gain circuits optimized for different ranges.
+Higher megapixels always give better low-light image quality.
+Sensor pixel pitch and lens resolving power both limit captured detail.
+
+Lenses & Optics
+A 50 mm lens gives the same field of view on APS-C and full-frame.
+On Micro Four Thirds, 25 mm roughly matches a 50 mm full-frame field of view.
+Stopping down always increases sharpness across the frame with no downside.
+Focus breathing changes field of view as focus distance changes.
+A 1.4× teleconverter increases focal length but reduces max aperture.
+
+Autofocus & Stabilization
+In-body image stabilization can freeze subject motion.
+Phase-detect AF determines defocus direction and magnitude within one exposure.
+Lens stabilization and IBIS are always fully additive across all systems.
+Passive mount adapters can’t add electronic autofocus to purely mechanical lenses.
+In video, IBIS can smooth micro-jitters but may introduce “wobble” with ultra-wide lenses.
+
+Video, Readout & Flash Sync
+Rolling shutter artifacts are typically worse with electronic shutter than mechanical.
+Hybrid Log-Gamma is an HDR transfer function for broadcast/display.
+H.265 (HEVC) can deliver similar image quality at lower bitrates than H.264.
+Log gamma profiles require color grading to look natural.
+X-sync speed limits the fastest shutter for full-power flash without HSS.
+
+Files, Color & Dynamic Range
+RAW files from the same camera retain more dynamic range than JPEGs.
+Bit depth increases the number of tonal steps per channel.
+4:2:0 chroma subsampling preserves all color information.
+Compressed RAW is always visually identical to uncompressed RAW under any edit.
+Dynamic range is the ratio between brightest and darkest reproducible tones in one shot.

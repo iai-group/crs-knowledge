@@ -146,6 +146,13 @@ dmypy.json
 # Ignore large code and data directories while we clean up tracking
 /crs/
 /data/
+!/data/dialogues/
+!/data/dialogues/**
+!/data/questionnaires/
+!/data/questionnaires/**
+!/data/tasks/
+!/data/tasks/**
+!/data/README.md
 /tests/
 
 # Do not track file while cleaning up
