@@ -143,19 +143,12 @@ dmypy.json
 /config/
 /scripts/
 
-# Ignore large code and data directories while we clean up tracking
-/crs/
-/data/
-!/data/dialogues/
-!/data/dialogues/**
-!/data/questionnaires/
-!/data/questionnaires/**
-!/data/tasks/
-!/data/tasks/**
-!/data/README.md
+# Ignore large code and data directories
+/data.bak/
 /tests/
 
-# Do not track file while cleaning up
+# Do not track code for now
+/crs/
 /requirements.txt
 /.flake8
 /.pre-commit-config.yaml

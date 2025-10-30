@@ -10,7 +10,13 @@
 The ideal conversational recommender system (CRS) acts like a savvy salesperson, adapting its language and suggestions to each user's level of expertise. However, most current systems treat all users as experts, leading to frustrating and inefficient interactions when users are unfamiliar with a domain. 
 Systems that can adapt their conversational strategies to a user's knowledge level stand to offer a much more natural and effective experience. To make a step toward such adaptive systems, we introduce a new task: estimating user domain knowledge from conversations, enabling a CRS to better understand user needs and personalize interactions. A key obstacle to developing such adaptive systems is the lack of suitable data; to our knowledge, no existing dataset captures the conversational behaviors of users with varying levels of domain knowledge. Furthermore, in most dialogue collection protocols, users are free to express their own preferences, which tends to concentrate on popular items and well-known features, offering little insight into how novices explore or learn about unfamiliar features. To address this, we design a game-based data collection protocol that elicits varied expressions of knowledge, release the resulting dataset, and provide an initial analysis to highlight its potential for future work on user-knowledge-aware CRS.
 
-## RecQuest Dataset
+## RecQuest
+
+**RecQuest** is a recommendation-game used for data collection; participants interacted with a guided search-and-recommendation task (example interaction below).
+
+![Recommendation game interaction](data/assets/screenshot.png)
+
+## Dataset
 
 The dataset and supporting materials are available in the `data/` folder; see [`data/README.md`](data/README.md) for an overview and file locations.
 
