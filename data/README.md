@@ -31,6 +31,6 @@ An ordered array of message objects. Each message contains:
   * `role` (string): one of `human`, `ai`, or `system`
     - `human`: participant utterances (what the human said).
     - `ai`: assistant/model responses.
-    - `system`: system/instructional messages or metadata (for example prompts, setup notes, or other non-participant/non-assistant records).
+    - `system`: internal/system messages not visible to the user (for example parsed preferences, retrieved items, dialogue flow decisions).
   * `content` (string): the textual content of the message.
 
