@@ -2,9 +2,6 @@
 
 <!-- This repository provides resources developed within the following article [[PDF]](): -->
 
-
-
-
 ## Summary
 
 The ideal conversational recommender system (CRS) acts like a savvy salesperson, adapting its language and suggestions to each user's level of expertise. However, most current systems treat all users as experts, leading to frustrating and inefficient interactions when users are unfamiliar with a domain. 
@@ -30,6 +27,33 @@ Descriptive statistics: number of dialogues (#Dial) and utterances (#Utt) are to
 | Running Shoes  | 179   | 3636 | 10.07 ± 5.37       | 9.90 ± 5.54        | 3.52 ± 1.43       | 21.8%    |
 | Smartwatch     | 80    | 1665 | 10.18 ± 3.63       | 9.61 ± 4.08        | 3.45 ± 1.19       | 43.8%    |
 | **Total**      | **515** | **10688** | **10.21 ± 4.81** | **10.10 ± 5.03** | **3.46 ± 1.41** | **34.2%** |
+
+## Conversational Recommender System (CRS)
+
+The `crs/` directory contains a modular conversational recommender system built with LangChain and Streamlit. See [`crs/README.md`](crs/README.md) for detailed architecture and setup instructions.
+
+### Quick Start
+
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Set environment variables:
+   ```bash
+   export OPENAI_API_KEY="your-api-key"
+   ```
+
+3. Run the application:
+   ```bash
+   streamlit run crs/main.py
+   ```
+
+### Supported LLM Providers
+
+- **OpenAI** (default: gpt-4.1-mini)
+- **Google**
+- **Ollama** (local deployment)
 
 
 <!-- ## Citation

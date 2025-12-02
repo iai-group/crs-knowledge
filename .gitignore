@@ -133,24 +133,19 @@ dmypy.json
 /exports*
 /post_process
 
-
-# Item datasets
+# Item datasets (large files, not tracked in git)
 /data/items/
 /data/raw
+
+# Backup directories
+*.bak
+*.deprecated
 
 # Ignore streamlit and local config/scripts directories
 .streamlit/
 /config/
 /scripts/
-
-# Ignore large code and data directories
-/data.bak/
 /tests/
 
-# Do not track code for now
-/crs/
-/requirements.txt
 /.flake8
 /.pre-commit-config.yaml
-/conftest.py
-/pyproject.toml
