@@ -105,7 +105,7 @@ class ItemRetriever:
             )
 
         self.model_name = model_name
-        self.model = None  # we will fetch from cache when needed
+        self.model = None
 
         self.embeddings = None
         self.ids: List[str] = []
@@ -113,7 +113,7 @@ class ItemRetriever:
 
         if not document_embedding:
             embs, ids = load_embeddings_file(embeddings_path)
-            self.embeddings = embs  # float32 [N, D]
+            self.embeddings = embs
             self.ids = ids
             print(
                 f"Loaded {len(self.ids)} embeddings with shape {self.embeddings.shape}"
