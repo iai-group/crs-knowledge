@@ -195,9 +195,6 @@ def build_chatbot() -> None:
                 )
                 conversation_state.turn_state["awaiting_confirmation"] = False
 
-                _selected_item_name = conversation_state.turn_state.get(
-                    "selected_item_name", "this item"
-                )
                 explanation_prompt = (
                     "Great! Before we finalize, could you briefly explain in a "
                     "sentence or two why you think this option is the best "

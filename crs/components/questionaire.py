@@ -589,7 +589,7 @@ def build_questionnaire(page: str, next_page: str = None) -> None:
                 key = f"post_q{i+1}"
 
                 st.markdown(
-                    f'<div class="question-block">', unsafe_allow_html=True
+                    '<div class="question-block">', unsafe_allow_html=True
                 )
 
                 if question_type == "scale":

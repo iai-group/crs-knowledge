@@ -159,11 +159,6 @@ class ItemRetriever:
 
 
 def main(batch_size=1):
-    try:
-        from tqdm import tqdm
-    except ImportError:
-        tqdm = lambda x: x
-
     domain = "running_shoes"
 
     INPUT_PATH = f"data/items/{domain}_meta.jsonl"
