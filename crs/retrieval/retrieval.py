@@ -6,6 +6,7 @@ import numpy as np
 import streamlit as st
 import torch
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
