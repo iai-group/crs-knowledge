@@ -1,7 +1,6 @@
 """Retrieval utilities with caching and error handling."""
 
 import logging
-from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
 from .retrieval import ItemRetriever
@@ -32,8 +31,6 @@ def get_retriever(
     Raises:
         RetrievalError: If retriever cannot be initialized
     """
-    global _retriever_cache
-
     cache_key = f"{domain}"
 
     if force_reload or cache_key not in _retriever_cache:
@@ -86,12 +83,10 @@ def safe_retrieve(
 
 def clear_retriever_cache():
     """Clear the retriever cache (useful for testing or memory management)."""
-    global _retriever_cache
     _retriever_cache.clear()
     logger.info("Retriever cache cleared")
 
 
 def get_cached_retriever() -> Optional[ItemRetriever]:
     """Get the default cached retriever, if available."""
-    global _retriever_cache
     return _retriever_cache.get("default")

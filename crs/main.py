@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import random
 import uuid
 from datetime import datetime
 

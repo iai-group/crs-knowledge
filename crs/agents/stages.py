@@ -201,7 +201,7 @@ class PreferenceSummarizationStage(ConversationStage):
             return PreferenceStatus.NEW
 
         if has_preferences and number_of_new_preferences == num_old_pref:
-            self._calculate_preference_similarity(
+            similarity = self._calculate_preference_similarity(
                 old_preferences, updated_preferences
             )
 
