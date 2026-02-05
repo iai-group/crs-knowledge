@@ -56,7 +56,7 @@ The `crs/` directory contains a modular conversational recommender system built 
 - **Ollama** (local deployment)
 
 
-<!-- ## Citation
+## Citation
 
 If you use the resources presented in this repository, please cite:
 
@@ -69,7 +69,7 @@ If you use the resources presented in this repository, please cite:
     archivePrefix =   {arXiv},
     primaryClass =    {cs.IR},
 }  
-``` -->
+```
 
 ## Contact
 
