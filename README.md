@@ -1,4 +1,4 @@
-# Know Your Users! Estimating User Domain Knowledge in Conversational Recommenders
+# RecQuest: Towards Estimating User Domain Knowledge in Conversational Recommender Systems
 
 <!-- This repository provides resources developed within the following article [[PDF]](): -->
 
@@ -61,14 +61,15 @@ The `crs/` directory contains a modular conversational recommender system built 
 If you use the resources presented in this repository, please cite:
 
 ```
-@misc{Kostric:2025:arXiv,
-    author =          {Ivica Kostric and Ujwal Gadiraju and Krisztian Balog},
-    title =           {Know Your Users! Estimating User Domain Knowledge in Conversational Recommenders}, 
-    year =            {2025},
-    eprint =          {},
-    archivePrefix =   {arXiv},
-    primaryClass =    {cs.IR},
-}  
+@inproceedings{10.1145/3805713.3820438,
+author = {Kostric, Ivica and Gadiraju, Ujwal and Balog, Krisztian},
+title = {RecQuest: Towards Estimating User Domain Knowledge in Conversational Recommender Systems},
+year = {2026},
+isbn = {9798400726002},
+pages = {176–186},
+numpages = {11},
+series = {ICTIR '26}
+} 
 ```
 
 ## Contact
