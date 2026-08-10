@@ -75,4 +75,4 @@ series = {ICTIR '26}
 
 ## Contact
 
-Should you have any questions, please contact Ivica Kostric at ivica.kostric[AT]uis.no (with [AT] replaced by @).
+Should you have any questions, please contact Ivica Kostric at ivica.kostric@uis.no.
